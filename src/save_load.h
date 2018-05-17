@@ -490,8 +490,15 @@ InfiniteAlloc getDataObjects(EasyTokenizer *tokenizer) {
     return types;
 }
 
+typedef enum {
+    PATCH_TYPE_ENTITY_POS,
+    PATCH_TYPE_ENTITY,
+    PATCH_TYPE_COMMON,
+    PATCH_TYPE_EVENT
+} PatchType;
+
 typedef struct {
-    EntType type;
+    PatchType type;
 
     int id; //find entity with this 
     void **ptr; //patch this ptr
@@ -646,57 +653,86 @@ void loadWorld(GameState *gameState, char *dir) {
 
                     if(entData.type == ENTITY_TYPE_EVENT) {
                         if(stringsMatchNullN("ID", token.at, token.size)) {
-                            entData.event->ID = buildV3FromDataObjects(&data, &tokenizer);
+                            entData.event->ID = getIntFromDataObjects(&data, &tokenizer);
                         }
                         if(stringsMatchNullN("type", token.at, token.size)) {
-                            entData.event->type = buildV3FromDataObjects(&data, &tokenizer);
+                            char *name = getStringFromDataObjects(&data, &tokenizer);
+                            int typeAsInt = findEnumValue(name, EventTypeStrings, arrayCount(EventTypeStrings));
+                            assert(typeAsInt >= 0);
+                            entData.event->type = (EventType)typeAsInt;
                         }
                         if(stringsMatchNullN("dim", token.at, token.size)) {
                             entData.event->dim = buildV3FromDataObjects(&data, &tokenizer);
                         }
                         if(stringsMatchNullN("flags", token.at, token.size)) {
-                            entData.event->flags = buildV3FromDataObjects(&data, &tokenizer);
+                            entData.event->flags = getIntFromDataObjects(&data, &tokenizer);
                         }
                         if(stringsMatchNullN("sound", token.at, token.size)) {
-                            entData.event->sound = buildV3FromDataObjects(&data, &tokenizer);
+                            char *name = getStringFromDataObjects(&data, &tokenizer);
+                            entData.event->sound = findAsset(name);
+                            assert(entData.event->sound);
                         }
-
                         if(stringsMatchNullN("nextEventID", token.at, token.size)) {
-                            //PATCH
-                            entData.event->centerPoint = buildV3FromDataObjects(&data, &tokenizer);
+                            int nextEventID = getIntFromDataObjects(&data, &tokenizer);
+                            
+                            assert(patchCount < arrayCount(patches));
+                            PointerToPatch *patch = patches + patchCount++;
+                            patch->type = PATCH_TYPE_EVENT;
+                            patch->id = nextEventID;
+                            patch->ptr = (void **)(&entData.event->nextEvent);
+                            
                         }
                         if(stringsMatchNullN("entId", token.at, token.size)) {
-                            // PATCH  for V3
-                            entData.event->entId = buildV3FromDataObjects(&data, &tokenizer);
+                            int entId = getIntFromDataObjects(&data, &tokenizer);
+                            entData.event->entId = entId;
+
+                            assert(patchCount < arrayCount(patches));
+                            PointerToPatch *patch = patches + patchCount++;
+                            patch->type = PATCH_TYPE_ENTITY_POS;
+                            patch->id = entId;
+                            patch->ptr = (void **)(&entData.event->pos);
                         }
                         if(stringsMatchNullN("dialogCount", token.at, token.size)) {
-                            entData.event->centerPoint = buildV3FromDataObjects(&data, &tokenizer);
+                            entData.event->dialogCount = getIntFromDataObjects(&data, &tokenizer);
                         }
                         if(stringsMatchNullN("dialog", token.at, token.size)) {
-                            //ARRAY
-                            entData.event->centerPoint = buildV3FromDataObjects(&data, &tokenizer);
+                            data = getDataObjects(&tokenizer);
+                            DataObject *objs = (DataObject *)data.memory;
+                            
+                            assert(entData.event->dialogCount == data.count || entData.event->dialogCount == 0);
+                            
+                            for(int dialogIndex = 0; dialogIndex < data.count; dialogIndex++) {
+                                assert(objs[dialogIndex].type == VAR_CHAR_STAR);    
+                                entData.event->dialog[dialogIndex] = objs[dialogIndex].stringVal;
+                            }
                         }
                         if(stringsMatchNullN("dialogTimerPeriod", token.at, token.size)) {
-                            entData.event->centerPoint = buildV3FromDataObjects(&data, &tokenizer);
+                            entData.event->dialogTimer.period = getFloatFromDataObjects(&data, &tokenizer);
                         }
                         if(stringsMatchNullN("dialogDisplayValue", token.at, token.size)) {
-                            entData.event->centerPoint = buildV3FromDataObjects(&data, &tokenizer);
+                            entData.event->dialogDisplayValue = getFloatFromDataObjects(&data, &tokenizer);
                         }
                         if(stringsMatchNullN("lerpType", token.at, token.size)) {
-                            entData.event->centerPoint = buildV3FromDataObjects(&data, &tokenizer);
+                            char *name = getStringFromDataObjects(&data, &tokenizer);
+                            int type = findEnumValue(name, LerpTypeStrings, arrayCount(LerpTypeStrings));
+                            entData.event->lerpType = (LerpType)type;
                         }
                         if(stringsMatchNullN("lerpB", token.at, token.size)) {
-                            entData.event->centerPoint = buildV3FromDataObjects(&data, &tokenizer);
+                            entData.event->lerpValueV3.b = getFloatFromDataObjects(&data, &tokenizer);
                         }
                         if(stringsMatchNullN("lerpEntId", token.at, token.size)) {
-                            entData.event->centerPoint = buildV3FromDataObjects(&data, &tokenizer);
+                            int entId = getIntFromDataObjects(&data, &tokenizer);
+
+                            assert(patchCount < arrayCount(patches));
+                            PointerToPatch *patch = patches + patchCount++;
+                            patch->type = PATCH_TYPE_ENTITY_POS;
+                            patch->id = entId;
+                            patch->ptr = (void **)(&entData.event->lerpValueV3.val);
                         }
                         if(stringsMatchNullN("lerpTimerPeriod", token.at, token.size)) {
-                            entData.event->centerPoint = buildV3FromDataObjects(&data, &tokenizer);
+                            entData.event->lerpValueV3.timer.period = getFloatFromDataObjects(&data, &tokenizer);
                         }
                     }
-                    
-                    
 
                     //platform data
                     if(entData.type == ENTITY_TYPE_PLATFORM) {
@@ -718,7 +754,7 @@ void loadWorld(GameState *gameState, char *dir) {
                             
                             assert(patchCount < arrayCount(patches));
                             PointerToPatch *patch = patches + patchCount++;
-                            patch->type = ENTITY_TYPE_NOTE_PARENT;
+                            patch->type = PATCH_TYPE_ENTITY;
                             patch->id = parentID;
                             patch->ptr = (void **)(&entData.note->parent);
                             //
@@ -760,7 +796,7 @@ void loadWorld(GameState *gameState, char *dir) {
                         if(stringsMatchNullN("partnerID", token.at, token.size))  {
                             assert(patchCount < arrayCount(patches));
                             PointerToPatch *patch = patches + patchCount++;
-                            patch->type = ENTITY_TYPE_DOOR;
+                            patch->type = PATCH_TYPE_ENTITY;
                             patch->id = getIntFromDataObjects(&data, &tokenizer);
                             patch->ptr = (void **)(&entData.door->partner);
                             assert(patch->ptr);
@@ -854,14 +890,31 @@ void loadWorld(GameState *gameState, char *dir) {
 
     for(int patchIndex = 0; patchIndex < patchCount; ++patchIndex) {
         PointerToPatch *patch = patches + patchIndex;
-        Entity_Commons *ent = findEntityFromID(&gameState->commons, patch->id);
-        assert(ent);
-        void *toSet = ent;
-        if(patch->type != ENTITY_TYPE_COMMONS) {
-            //if its not a commons, we want the actual entity type;
-            toSet = ent->parent;
-            assert(toSet);
+        
+        void *toSet = 0;
+        switch(patch->type) {
+            case PATCH_TYPE_EVENT: {
+                Event *event = findEventFromID(&gameState->events, patch->id);
+                assert(event);
+                toSet = event;
+            } break;
+            case PATCH_TYPE_COMMON: {
+                Entity_Commons *ent = findEntityFromID(&gameState->commons, patch->id);
+                assert(ent);
+                toSet = ent;
+            } break;
+            case PATCH_TYPE_ENTITY: {
+                Entity_Commons *ent = findEntityFromID(&gameState->commons, patch->id);
+                assert(ent);
+                toSet = ent->parent;
+            } break;
+            case PATCH_TYPE_ENTITY_POS: {
+                Entity_Commons *ent = findEntityFromID(&gameState->commons, patch->id);
+                assert(ent);
+                toSet = &ent->pos;
+            } break;
         }
+        assert(toSet);
         *patch->ptr = toSet; 
     }   
 

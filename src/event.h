@@ -45,6 +45,20 @@ typedef struct Event {
 	Event *nextEvent; 
 } Event;
 
+Event *findEventFromID(Array_Dynamic *events, int id) {
+	Event *result = 0;
+	for(int entIndex = 0; entIndex < events->count; entIndex++) {
+	    Event *event = (Entity_Commons *)getElement(events, entIndex);
+	    if(event) {
+	    	if(event->ID == id) {
+	    		result = event;
+	    		break;
+	    	}
+	    }
+	}
+	return result;
+}
+
 bool isEventFlagSet(Event *event, EventFlag flag) {
 	bool result = event->flags & flag;
 	return result;
