@@ -129,9 +129,11 @@ Pool *initPool(Array_Dynamic *array, size_t sizeofType, unsigned int id) {
 void initArray_(Array_Dynamic *array, size_t sizeofType) {
     memset(array, 0, sizeof(Array_Dynamic));
     array->sizeofType = sizeofType;
+    //set up sentinel
     ValidIndex *sent = &array->freeIndexesSent;
     array->freeIndexesSent.next = array->freeIndexesSent.prev = sent;
     assert(array->freeIndexesSent.next == &array->freeIndexesSent);
+    ////
 }
 
 bool isElmValid(Pool *pool, int index) {

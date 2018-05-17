@@ -39,6 +39,7 @@ static GameButton gameButtons[BUTTON_COUNT];
 #define GJK_IMPLEMENTATION 
 #include "easy_gjk.h"
 #include "easy_physics.h"
+#include "easy_lex.h"
 
 typedef struct {
     V3 pos;
@@ -66,7 +67,7 @@ static Texture globalFireTex_debug = {};
 #include "main.h"
 #include "undo_buffer.h"
 #include "easy_animation.h" //relys on gameState
-
+#include "save_load.h"
 
 static bool runningFunc = false;
 
@@ -101,7 +102,7 @@ CastRayInfo castRayAgainstWorld(GameState *gameState, Entity_Commons *ent, V2 ra
     bool isVarSet = false;
     for(int testIndex = 0; testIndex < gameState->commons.count; testIndex++) {
         Entity_Commons *testEnt = (Entity_Commons *)getElement(&gameState->commons, testIndex);
-        if(testEnt && isFlagSet(testEnt, ENTITY_VALID) && isFlagSet(testEnt, ENTITY_COLLIDES) && testEnt != ent) {
+        if(testEnt && !isFlagSet(ent, ENTITY_CAMERA) && isFlagSet(testEnt, ENTITY_VALID) && isFlagSet(testEnt, ENTITY_COLLIDES) && testEnt != ent) {
             Matrix4 aRot = mat4_angle_aroundZ(testEnt->angle);
             
             V2 shapeA_[4];
@@ -129,297 +130,6 @@ CastRayInfo castRayAgainstWorld(GameState *gameState, Entity_Commons *ent, V2 ra
         }
     }
     return result;
-}
-
-// typedef enum {
-//     VAR_CHAR_STAR,
-//     VAR_LONG_INT,
-//     VAR_INT,
-//     VAR_FLOAT,
-//     VAR_V2,
-//     VAR_V3,
-//     VAR_V4,
-// } VarType_;
-
-void addVar_(InfiniteAlloc *mem, void *val_, int count, char *varName, VarType type) {
-    char data[1028];
-    sprintf(data, "\t%s: ", varName);
-    addElementInifinteAllocWithCount_(mem, data, strlen(data));
-
-    if(count > 1 && type != VAR_CHAR_STAR) {
-        assert(!"array not handled yet");
-    }
-    switch(type) {
-        case VAR_CHAR_STAR: {
-            if(count == 1) {
-                char *val = (char *)val_;
-                sprintf(data, "%s", val);
-            } else {
-                assert(count > 1);
-                printf("isArray\n");
-
-                char **val = (char **)val_;
-                char *bracket = "[";
-                addElementInifinteAllocWithCount_(mem, bracket, 1);
-                for(int i = 0; i < count; ++i) {
-                    printf("%s\n", val[i]);
-                    sprintf(data, "%s", val[i]);    
-                    addElementInifinteAllocWithCount_(mem, data, strlen(data));
-                    if(i != count - 1) {
-                        char *commaString = ", ";
-                        addElementInifinteAllocWithCount_(mem, commaString, 2);
-                    }
-                }
-                bracket = "]";
-                addElementInifinteAllocWithCount_(mem, bracket, 1);
-                data[0] = 0; //clear data
-                
-            }
-        } break;
-        case VAR_LONG_INT: {
-            unsigned long *val = (unsigned long *)val_;
-            sprintf(data, "%ld", val[0]);
-        } break;
-        case VAR_INT: {
-            int *val = (int *)val_;
-            sprintf(data, "%d", val[0]);
-        } break;
-        case VAR_FLOAT: {
-            float *val = (float *)val_;
-            sprintf(data, "%f", val[0]);
-        } break;
-        case VAR_V2: {
-            float *val = (float *)val_;
-            sprintf(data, "%f %f", val[0], val[1]);
-        } break;
-        case VAR_V3: {
-            float *val = (float *)val_;
-            sprintf(data, "%f %f %f", val[0], val[1], val[2]);
-        } break;
-        case VAR_V4: {
-            float *val = (float *)val_;
-            sprintf(data, "%f %f %f %f", val[0], val[1], val[2], val[3]);
-        } break;
-    }
-    addElementInifinteAllocWithCount_(mem, data, strlen(data));
-
-    sprintf(data, ";\n");
-    addElementInifinteAllocWithCount_(mem, data, strlen(data));
-}
-
-#define addVarArray(mem, val_, count, varName, type) addVar_(mem, val_, count, varName, type)
-#define addVar(mem, val_, varName, type) addVar_(mem, val_, 1, varName, type)
-
-typedef struct {
-    InfiniteAlloc mem;
-    game_file_handle fileHandle;
-} EntFileData;
-
-void beginDataType(InfiniteAlloc *mem, char *name) {
-    char data[16];
-    sprintf(data, "%s: {\n", name);
-    addElementInifinteAllocWithCount_(mem, data, strlen(data));
-}
-
-void endDataType(InfiniteAlloc *mem) {
-    char data[16];
-    sprintf(data, "\n}\n");
-    addElementInifinteAllocWithCount_(mem, data, strlen(data));
-}
-
-
-void outputCommonData(InfiniteAlloc *mem, Entity_Commons *ent) {
-    char *typeString = EntityTypeStrings[ent->type]; //this is from a global
-
-    char data[1028];
-    beginDataType(mem, "Commons");
-
-    addVar(mem, &ent->ID, "id", VAR_INT);
-    addVar(mem, ent->name, "name", VAR_CHAR_STAR);
-
-    addVar(mem, &ent->flags, "flags", VAR_LONG_INT);
-    addVar(mem, typeString, "type", VAR_CHAR_STAR);
-
-    addVar(mem, ent->pos.E, "position", VAR_V3);
-    addVar(mem, ent->renderPosOffset.E, "renderPosOffset", VAR_V3);
-    addVar(mem, ent->dim.E, "dim", VAR_V3);
-    addVar(mem, ent->renderScale.E, "renderScale", VAR_V3);
-    addVar(mem, ent->shading.E, "shading", VAR_V4);
-
-    addVar(mem, ent->tex->name, "texture", VAR_CHAR_STAR);
-    addVar(mem, &ent->inverseWeight, "inverseWeight", VAR_FLOAT);
-
-    if(ent->animationParent) {
-        addVar(mem, ent->animationParent->name, "animation", VAR_CHAR_STAR);
-    }
-    endDataType(mem);
-}
-
-char *getEntName(char *prepend, Entity_Commons *ent) {
-    char name[256];
-    sprintf(name, "_%d_", ent->ID);
-    char *entFileName = concat(prepend, name);
-    return entFileName;
-}
-
-EntFileData beginEntFileData(char *dirName, char *fileName_, char *entType, Entity_Commons *ent) {
-    EntFileData result = {};
-
-    char *entName = getEntName(entType, ent);
-    char *a = concat(dirName, entName);
-    char *entFileName = concat(a, fileName_);
-
-    result.mem = initInfinteAlloc(char);
-    result.fileHandle = platformBeginFileWrite(entFileName);
-    free(entName);
-    free(entFileName);
-    free(a);
-    return result;
-}
-
-void endEntFileData(EntFileData *data) {
-    platformWriteFile(&data->fileHandle, data->mem.memory, data->mem.count*data->mem.sizeOfMember, 0);
-    platformEndFile(data->fileHandle);
-    free(data->mem.memory);
-}
-
-
-void saveWorld(GameState *gameState, char *dir, char *fileName) {
-    
-    //TODO: Do events want to be assets
-
-    // initArray(&gameState->particleSystems, particle_system);
-    // initArray(&gameState->events, Event);
-
-    for(int entIndex = 0; entIndex < gameState->npcEntities.count; entIndex++) {
-        NPC *ent = (NPC *)getElement(&gameState->npcEntities, entIndex);
-        if(ent && isFlagSet(ent->e, ENTITY_VALID)) {
-            EntFileData fileData = beginEntFileData(dir, fileName, "NPC", ent->e);
-            beginDataType(&fileData.mem, "NPC");
-            endDataType(&fileData.mem);
-
-            outputCommonData(&fileData.mem, ent->e);
-            endEntFileData(&fileData);
-        }
-    }
-
-    for(int entIndex = 0; entIndex < gameState->noteParentEnts.count; entIndex++) {
-        NoteParent *ent = (NoteParent *)getElement(&gameState->noteParentEnts, entIndex);
-        if(ent && isFlagSet(ent->e, ENTITY_VALID)) {
-            EntFileData fileData = beginEntFileData(dir, fileName, "noteParent", ent->e);
-
-            beginDataType(&fileData.mem, "NoteParent");
-            addVar(&fileData.mem, &ent->noteValueCount, "noteValueCount", VAR_INT);
-            
-            if(ent->noteValueCount > 0) {
-                char *noteStrings[32] = {};
-                for(int i = 0; i < ent->noteValueCount; ++i) {
-                    char *noteValue = NoteValueStrings[ent->sequence[i]];
-                    noteStrings[i] = noteValue;
-                }
-                addVarArray(&fileData.mem, noteStrings, ent->noteValueCount, "noteSequence", VAR_CHAR_STAR);
-            }
-            //TODO: ALSO EVENTS
-            endDataType(&fileData.mem);
-
-            outputCommonData(&fileData.mem, ent->e);
-
-            endEntFileData(&fileData);
-        }
-    }
-
-    
-
-    for(int entIndex = 0; entIndex < gameState->noteEnts.count; entIndex++) {
-        Note *ent = (Note *)getElement(&gameState->noteEnts, entIndex);
-        if(ent && isFlagSet(ent->e, ENTITY_VALID)) {
-            EntFileData fileData = beginEntFileData(dir, fileName, "note", ent->e);
-
-            beginDataType(&fileData.mem, "Note");
-            if(ent->sound) {
-                addVar(&fileData.mem, ent->sound->name, "sound", VAR_CHAR_STAR);
-            }
-            addVar(&fileData.mem, NoteValueStrings[ent->value], "noteValue", VAR_CHAR_STAR);
-            addVar(&fileData.mem, &ent->parent->e->ID, "parentID", VAR_INT);
-            endDataType(&fileData.mem);
-
-            outputCommonData(&fileData.mem, ent->e);
-
-            endEntFileData(&fileData);
-        }
-    }
-
-    for(int entIndex = 0; entIndex < gameState->entities.count; entIndex++) {
-        Entity *ent = (Entity *)getElement(&gameState->entities, entIndex);
-        if(ent && isFlagSet(ent->e, ENTITY_VALID)) {
-            EntFileData fileData = beginEntFileData(dir, fileName, "entity", ent->e);
-
-            beginDataType(&fileData.mem, "Entity");
-            endDataType(&fileData.mem);
-
-            //TODO: Event *event; Also has an event
-
-            outputCommonData(&fileData.mem, ent->e);
-
-            endEntFileData(&fileData);
-        }
-    }
-
-    for(int entIndex = 0; entIndex < gameState->platformEnts.count; entIndex++) {
-        Entity *ent = (Entity *)getElement(&gameState->platformEnts, entIndex);
-        if(ent && isFlagSet(ent->e, ENTITY_VALID)) {
-            EntFileData fileData = beginEntFileData(dir, fileName, "platform", ent->e);
-
-            beginDataType(&fileData.mem, "Platform");
-            addVar(&fileData.mem, ent->centerPoint.E, "centerPoint", VAR_V3);
-            addVar(&fileData.mem, PlatformTypeStrings[ent->platformType], "platformType", VAR_CHAR_STAR);
-            endDataType(&fileData.mem);
-
-            //TODO: Event *event; Also has an event
-
-            outputCommonData(&fileData.mem, ent->e);
-
-            endEntFileData(&fileData);
-        }
-    }
-
-    for(int entIndex = 0; entIndex < gameState->collisionEnts.count; entIndex++) {
-        Collision_Object *ent = (Collision_Object *)getElement(&gameState->collisionEnts, entIndex);
-        if(ent && isFlagSet(ent->e, ENTITY_VALID)) {
-            EntFileData fileData = beginEntFileData(dir, fileName, "collision", ent->e);
-            beginDataType(&fileData.mem, "Collision");
-            endDataType(&fileData.mem);
-
-            outputCommonData(&fileData.mem, ent->e);
-            endEntFileData(&fileData);
-        }
-    }
-
-    for(int entIndex = 0; entIndex < gameState->doorEnts.count; entIndex++) {
-        Door *ent = (Door *)getElement(&gameState->doorEnts, entIndex);
-        if(ent && isFlagSet(ent->e, ENTITY_VALID)) {
-            EntFileData fileData = beginEntFileData(dir, fileName, "door", ent->e);
-            beginDataType(&fileData.mem, "Door");
-            endDataType(&fileData.mem);
-
-            outputCommonData(&fileData.mem, ent->e);
-
-            Door *ent = (Door *)getElement(&gameState->doorEnts, ++entIndex);
-            if(isFlagSet(ent->e, ENTITY_VALID)) {
-                //TODO: if we delete an entity make sure we delete the other door
-                assert(ent);
-                beginDataType(&fileData.mem, "Door");
-                endDataType(&fileData.mem);
-
-                outputCommonData(&fileData.mem, ent->e);
-            }
-            endEntFileData(&fileData);
-        }
-    }
-} 
-
-void loadWorld(char *dir) {
-    
 }
 
 V2 transformWorldPToScreenP(V2 inputA, float zPos, float width, float height, V2 middleP) {
@@ -531,19 +241,8 @@ int main(int argc, char *args[]) {
         //////
 
         ////INIT ARRAYS
-        initArray(&gameState->commons, Entity_Commons);
-        initArray(&gameState->entities, Entity);
-        initArray(&gameState->collisionEnts, Collision_Object);
-        initArray(&gameState->doorEnts, Door);
-        initArray(&gameState->undoBuffer, UndoInfo);
-        initArray(&gameState->platformEnts, Entity);
-        initArray(&gameState->noteEnts, Note);
-        initArray(&gameState->noteParentEnts, NoteParent);
-        initArray(&gameState->particleSystems, particle_system);
-        initArray(&gameState->npcEntities, NPC);
-        initArray(&gameState->events, Event);
+        initWorldDataArrays(gameState, false);
         ///// ///////
-
 
         //for stb_image so the images aren't upside down.
         stbi_set_flip_vertically_on_load(true);
@@ -639,15 +338,20 @@ int main(int argc, char *args[]) {
         collisionEnt->e->dim.x = 30;
         assert(isFlagSet(collisionEnt->e, ENTITY_COLLISION));
 
-        Entity *player = (Entity *)getEmptyElement(&gameState->entities);
-        initEntity(&gameState->commons, player, v3(1, 4, -1), doorTex, 1, gameState->ID++);
-        setFlag(player->e, ENTITY_PLAYER);
-        player->e->name = "player";
-        player->e->animationParent = findAsset((char *)"knight animation");
-        assert(player->e->animationParent);
-        AddAnimationToList(gameState, &gameState->longTermArena, player->e, FindAnimation(gameState->KnightAnimations.anim, gameState->KnightAnimations.count, (char *)"Knight_Idle"));
+        gameState->player = (Entity *)getEmptyElement(&gameState->entities);
+        initEntity(&gameState->commons, gameState->player, v3(1, 4, -1), doorTex, 1, gameState->ID++);
+        setFlag(gameState->player->e, ENTITY_PLAYER);
+        gameState->player->e->name = "player";
+        gameState->player->e->animationParent = findAsset((char *)"knight animation");
+        assert(gameState->player->e->animationParent);
+        AddAnimationToList(gameState, &gameState->longTermArena, gameState->player->e, FindAnimation(gameState->KnightAnimations.anim, gameState->KnightAnimations.count, (char *)"Knight_Idle"));
 
-        gameState->camera.pos.z = 0;
+        gameState->camera = initEntityCommons(void *entParent, &gameState->commons, v3(0, 0, 0), 0, 0, gameState->ID++);
+        gameState->camera->pos.z = 0;
+        setFlag(gameState->camera, ENTITY_CAMERA);
+        unSetFlag(gameState->camera, ENTITY_COLLIDES);
+        gameState->camera->name = "camera";
+
         //////SETUP THREADS
         SDL_sem* semaphore = SDL_CreateSemaphore(0);
         
@@ -700,26 +404,6 @@ int main(int argc, char *args[]) {
         bool followPlayer = false;
         float distanceFromLayer = 0.4f;
 
-        ////This make sures 
-        char *exts = {"txt"};
-        char saveDir[256] = "../res/levels/level1";
-        FileNameOfType files = getDirectoryFilesOfType(saveDir, exts, 1);
-        while(true) {
-            for(int i = 0; i < files.count; ++i) {
-                if(cmpStrNull(files.names[i], saveDir)) {
-                    found = true;
-                    break;
-                }
-            }
-            if(found) { 
-                saveDir = concat("../res/levels/level1");
-            } else {
-                break;
-            }
-        }
-        
-
-
 
         LerpV3 cameraLerp = initLerpV3();
         bool MultiSample = true;
@@ -738,6 +422,7 @@ int main(int argc, char *args[]) {
         
         Event *currentEvent = 0;
 
+        char *loadDir = concat(globalExeBasePath, "levels/");
         while(running) {
             //Save state of last frame game buttons 
             bool mouseWasDown = isDown(gameButtons, BUTTON_LEFT_MOUSE);
@@ -902,7 +587,7 @@ int main(int argc, char *args[]) {
                 Event *ent = (Event *)getElement(&gameState->events, entIndex);
                 if(ent && isEventFlagSet(ent, EVENT_TRIGGER)) {
                     Rect3f triggerDim = rect3fCenterDimV3(*ent->pos, ent->dim);
-                    if(inBoundsV3(player->e->pos, triggerDim)) {
+                    if(inBoundsV3(gameState->player->e->pos, triggerDim)) {
                         hotEvent = ent;
                     }
                 }
@@ -1004,7 +689,7 @@ int main(int argc, char *args[]) {
             
             ////UPDATE CAMERA///
             if(followPlayer && !currentEvent) {
-                V3 relPos = v3_minus(player->e->pos, gameState->camera.pos);
+                V3 relPos = v3_minus(gameState->player->e->pos, gameState->camera.pos);
                 V3 followDim = v3(2, 2, 2);
 #if 1
                 float power = 100;
@@ -1115,7 +800,7 @@ int main(int argc, char *args[]) {
                     }
 
                     Rect2f entBounds = rect2fCenterDimV2(ent->e->pos.xy, ent->e->dim.xy);
-                    if(inBounds(player->e->pos.xy, entBounds, BOUNDS_RECT)) {
+                    if(inBounds(gameState->player->e->pos.xy, entBounds, BOUNDS_RECT)) {
                         npcEnt = ent;
                     }
                 }
@@ -1124,21 +809,24 @@ int main(int argc, char *args[]) {
             Door *door = 0;
             for(int entIndex = 0; entIndex < gameState->doorEnts.count; entIndex++) {
                 Door *ent = (Door *)getElement(&gameState->doorEnts, entIndex);
-                if(ent && isFlagSet(ent->e, ENTITY_VALID) && floatEqual_withError(ent->e->pos.z, player->e->pos.z)) {
+                if(ent && isFlagSet(ent->e, ENTITY_VALID) && floatEqual_withError(ent->e->pos.z, gameState->player->e->pos.z)) {
                     Rect2f entBounds = rect2fCenterDimV2(ent->e->pos.xy, ent->e->dim.xy);
-                    if(inBounds(player->e->pos.xy, entBounds, BOUNDS_RECT)) {
+                    if(inBounds(gameState->player->e->pos.xy, entBounds, BOUNDS_RECT)) {
                         door = ent;
+                        
                         break;
                     }
                 }
             }
-            if(door && door != player->lastDoor) {
+            if(door && door != gameState->player->lastDoor) {
                 //We found a door to go through
+                printf("%s\n", "is door Teleport");
                 door = door->partner;
-                player->e->pos = door->e->pos;
+                assert(door);
+                gameState->player->e->pos = door->e->pos;
                 playSound(&arena, getSoundAsset(doorSound), 0);
             }
-            player->lastDoor = door;    
+            gameState->player->lastDoor = door;    
             /////////////////
 
             ////////////PARENT MUSIC NOTE INTERACTION//////////
@@ -1146,9 +834,9 @@ int main(int argc, char *args[]) {
             for(int entIndex = 0; entIndex < gameState->noteParentEnts.count; entIndex++) {
                 NoteParent *ent = (NoteParent *)getElement(&gameState->noteParentEnts, entIndex);
                 if(ent && isFlagSet(ent->e, ENTITY_VALID)) {
-                    if(floatEqual_withError(ent->e->pos.z, player->e->pos.z)) { 
+                    if(floatEqual_withError(ent->e->pos.z, gameState->player->e->pos.z)) { 
                         Rect2f entBounds = rect2fCenterDimV2(ent->e->pos.xy, ent->e->dim.xy);
-                        if(inBounds(player->e->pos.xy, entBounds, BOUNDS_RECT)) {
+                        if(inBounds(gameState->player->e->pos.xy, entBounds, BOUNDS_RECT)) {
                             parentNote = ent;
                         }
                     }
@@ -1212,15 +900,15 @@ int main(int argc, char *args[]) {
                     float wiggleFactor = 0.2f;
                     ent->e->renderPosOffset.y = wiggleFactor*sin(TAU32*timerInfo.canonicalVal);
                     
-                    if(floatEqual_withError(ent->e->pos.z, player->e->pos.z)) { 
+                    if(floatEqual_withError(ent->e->pos.z, gameState->player->e->pos.z)) { 
                         Rect2f entBounds = rect2fCenterDimV2(ent->e->pos.xy, ent->e->dim.xy);
-                        if(inBounds(player->e->pos.xy, entBounds, BOUNDS_RECT)) {
+                        if(inBounds(gameState->player->e->pos.xy, entBounds, BOUNDS_RECT)) {
                             note = ent;
                         }
                     }
                 }
             }
-            if(note && note != player->lastNote) {
+            if(note && note != gameState->player->lastNote) {
                 assert(note->parent);
                 NoteParent *parent = note->parent;
                 int temp = addElement(&parent->values, note->value);
@@ -1260,12 +948,12 @@ int main(int argc, char *args[]) {
                     }    
                 }
             }
-            player->lastNote = note;    
+            gameState->player->lastNote = note;    
             ///////////////// RAY CASTING FOR PLATFORMS AND JUMPING /////
             CastRayInfo rayInfo = {};
             for(int entIndex = 0; entIndex < gameState->commons.count; entIndex++) {
                 Entity_Commons *ent = (Entity_Commons *)getElement(&gameState->commons, entIndex);
-                if(ent && isFlagSet(ent, ENTITY_VALID)) {
+                if(ent && isFlagSet(ent, ENTITY_VALID) && !isFlagSet(ent, ENTITY_CAMERA)) {
                     if(isFlagSet(ent, ENTITY_PLAYER)) {
                         float distanceToJump = 0.1f;
                         rayInfo = castRayAgainstWorld(gameState, ent, v2_scale(distanceToJump, v2(0, -1)));
@@ -1277,7 +965,7 @@ int main(int argc, char *args[]) {
             bool onPlatform = false;
             if(rayInfo.hitEnt) { //we know the player is grounded
                 if(rayInfo.hitEnt->type == ENT_TYPE_PLATFORM) {
-                    player->e->ddP = rayInfo.hitEnt->ddP;
+                    gameState->player->e->ddP = rayInfo.hitEnt->ddP;
                     onPlatform = true;
                 } 
                 if(inputAccel.y > 0) { //player wants to jump 
@@ -1290,7 +978,7 @@ int main(int argc, char *args[]) {
                 }
             }
             if(!onPlatform) {
-                player->e->ddP = v3(0, 0, 0);
+                gameState->player->e->ddP = v3(0, 0, 0);
             }
             ////////
 
@@ -1302,7 +990,7 @@ int main(int argc, char *args[]) {
             
             for(int entIndex = 0; entIndex < gameState->commons.count; entIndex++) {
                 Entity_Commons *ent = (Entity_Commons *)getElement(&gameState->commons, entIndex);
-                if(ent && isFlagSet(ent, ENTITY_VALID)) {
+                if(ent && isFlagSet(ent, ENTITY_VALID) && !isFlagSet(ent, ENTITY_CAMERA)) {
 
                     ///////UPDATE PHYSICS HERE/////
                     V3 force = ent->ddP;
@@ -1352,7 +1040,7 @@ int main(int argc, char *args[]) {
                                 continue;
                             }
 
-                            if(testEnt && isFlagSet(testEnt, ENTITY_VALID) && isFlagSet_(ent->flags & testEnt->flags, ENTITY_COLLIDES) && ent != testEnt && !isFlagSet_(ent->flags & testEnt->flags, ENTITY_COLLISION)) {//&& (signOf(entZValue) == signOf(testEntZValue))) {//dont test for collisions between static collision geometry
+                            if(testEnt && !isFlagSet(ent, ENTITY_CAMERA) && isFlagSet(testEnt, ENTITY_VALID) && isFlagSet_(ent->flags & testEnt->flags, ENTITY_COLLIDES) && ent != testEnt && !isFlagSet_(ent->flags & testEnt->flags, ENTITY_COLLISION)) {//&& (signOf(entZValue) == signOf(testEntZValue))) {//dont test for collisions between static collision geometry
                                  //&& floatEqual_withError(ent->pos.z, testEnt->pos.z)
                             
                                 // V3 relPosTest = v3_minus(testEnt->pos, gameState->camera.pos);
@@ -1552,7 +1240,7 @@ int main(int argc, char *args[]) {
         //TODO: CHnage particle systems to have their own array 
         for(int entIndex = 0; entIndex < gameState->commons.count; entIndex++) {
             Entity_Commons *ent = (Entity_Commons *)getElement(&gameState->commons, entIndex);
-            if(ent && isFlagSet(ent, ENTITY_VALID)) {
+            if(ent && isFlagSet(ent, ENTITY_VALID) && !isFlagSet(ent, ENTITY_CAMERA)) {
                 drawAndUpdateParticleSystem(&ent->particleSystem, dt, ent->pos, v3(0, 0, 0), gameState->camera.pos, metresToPixels);
             }
         }
@@ -1589,41 +1277,41 @@ int main(int argc, char *args[]) {
                 if(!interacting.e) {
                     if(wasPressed(gameButtons, BUTTON_LEFT_MOUSE)) {
                         if(isDown(gameButtons, BUTTON_SHIFT)) { //create a new entity
-                            printf("created Entity\n");
-                            switch(entityType) {
-                                case 1: {
+                            V3 initPos = v2ToV3(mouseP_worldSpace, initEntityZPos);
+                            switch((EntType)entityType) {
+                                case ENTITY_TYPE_ENTITY: {
                                     Entity *newEnt = (Entity *)getEmptyElement(&gameState->entities);
-                                    initEntity(&gameState->commons, newEnt, v2ToV3(mouseP_worldSpace, initEntityZPos), doorTex, 1, gameState->ID++);
+                                    initEntity(&gameState->commons, newEnt, initPos, doorTex, 1, gameState->ID++);
                                     addToUndoBufferIndex(&gameState->undoBuffer, CREATE_ENTITY, newEnt->e);
                                 } break;
-                                case 2: {
+                                case ENTITY_TYPE_COLLISION: {
                                     Collision_Object *newEnt = (Collision_Object *)getEmptyElement(&gameState->collisionEnts);
-                                    initCollisionEnt(&gameState->commons, newEnt, v2ToV3(mouseP_worldSpace, initEntityZPos), scrollTex, initWeight, gameState->ID++);
+                                    initCollisionEnt(&gameState->commons, newEnt, initPos, scrollTex, initWeight, gameState->ID++);
                                     addToUndoBufferIndex(&gameState->undoBuffer, CREATE_ENTITY, newEnt->e);
                                 } break;
-                                case 3: {
+                                case ENTITY_TYPE_DOOR: {
                                     Door *newEnt = (Door *)getEmptyElement(&gameState->doorEnts);
-                                    initDoorEnt(&gameState->commons, newEnt, v2ToV3(mouseP_worldSpace, initEntityZPos), doorTex, gameState->ID++);
+                                    initDoorEnt(&gameState->commons, newEnt, initPos, doorTex, gameState->ID++);
                                     addToUndoBufferIndex(&gameState->undoBuffer, CREATE_ENTITY, newEnt->e);
 
                                     Door *newEnt2 = (Door *)getEmptyElement(&gameState->doorEnts);
-                                    initDoorEnt(&gameState->commons, newEnt2, v2ToV3(mouseP_worldSpace, initEntityZPos), doorTex, gameState->ID++);
-                                    newEnt2->e->pos = v2ToV3(v2_plus(mouseP_worldSpace, v2(1, 1)), initEntityZPos);
+                                    initDoorEnt(&gameState->commons, newEnt2, initPos, doorTex, gameState->ID++);
+                                    newEnt2->e->pos = v3_plus(initPos, v3(1, 1, 0));
                                     addToUndoBufferIndex(&gameState->undoBuffer, CREATE_ENTITY, newEnt2->e);
                                     newEnt2->partner = newEnt;
                                     newEnt->partner = newEnt2;
                                 } break;
-                                case 4: {
+                                case ENTITY_TYPE_PLATFORM: {
                                     Entity *newEnt = (Entity *)getEmptyElement(&gameState->platformEnts);
-                                    initPlatformEnt(&gameState->commons, newEnt, v2ToV3(mouseP_worldSpace, initEntityZPos), scrollTex, gameState->ID++);
+                                    initPlatformEnt(&gameState->commons, newEnt, initPos, scrollTex, gameState->ID++);
                                     addToUndoBufferIndex(&gameState->undoBuffer, CREATE_ENTITY, newEnt->e);
                                     newEnt->platformType = platformType;
                                     
                                 } break;
-                                case 5: {
+                                case ENTITY_TYPE_NOTE: {
                                     Note *newEnt = (Note *)getEmptyElement(&gameState->noteEnts);
                                     Asset *noteSound = notes[noteType];
-                                    initNoteEnt(&gameState->commons, newEnt, v2ToV3(mouseP_worldSpace, initEntityZPos), noteTex, noteSound, gameState->ID++);
+                                    initNoteEnt(&gameState->commons, newEnt, initPos, noteTex, noteSound, gameState->ID++);
 
                                     newEnt->parent = mostRecentParentNote;
                                     assert(newEnt->parent);
@@ -1632,9 +1320,9 @@ int main(int argc, char *args[]) {
                                     addToUndoBufferIndex(&gameState->undoBuffer, CREATE_ENTITY, newEnt->e);
                                     
                                 } break;
-                                case 6: {
+                                case ENTITY_TYPE_NOTE_PARENT: {
                                     NoteParent *newEnt = (NoteParent *)getEmptyElement(&gameState->noteParentEnts);
-                                    initNoteParentEnt(&gameState->commons, newEnt, v2ToV3(mouseP_worldSpace, initEntityZPos), stevinusTex, gameState->ID++);
+                                    initNoteParentEnt(&gameState->commons, newEnt, initPos, stevinusTex, gameState->ID++);
                                     mostRecentParentNote = newEnt;
                                     char *at = noteBuf;
                                     while(*at) {
@@ -1648,18 +1336,18 @@ int main(int argc, char *args[]) {
                                     addToUndoBufferIndex(&gameState->undoBuffer, CREATE_ENTITY, newEnt->e);
 
                                 } break;
-                                case 7: {
+                                case ENTITY_TYPE_SCENARIO: {
                                     Entity *newEnt = (Entity *)getEmptyElement(&gameState->entities);
-                                    initScenarioEnt(&gameState->commons, newEnt, v2ToV3(mouseP_worldSpace, initEntityZPos), currentTex, gameState->ID++);
+                                    initScenarioEnt(&gameState->commons, newEnt, initPos, currentTex, gameState->ID++);
                                     addToUndoBufferIndex(&gameState->undoBuffer, CREATE_ENTITY, newEnt->e);
                                 } break;
-                                case 8: {
+                                case ENTITY_TYPE_NPC: {
                                     NPC *newEnt = (NPC *)getEmptyElement(&gameState->npcEntities);
-                                    initNPCEnt(&gameState->commons, &gameState->events, newEnt, v2ToV3(mouseP_worldSpace, initEntityZPos), doorTex, 1, gameState->ID++);
+                                    initNPCEnt(gameState, &gameState->commons, &gameState->events, newEnt, initPos, doorTex, 1, gameState->ID++);
                                     addDialog(newEnt->event, (char *)"Light is the sound of nature, sound is the light of our world.\n");
                                     addDialog(newEnt->event, (char *)"The garden needs your help. You need to listen\n");
 
-                                    newEnt->event->nextEvent = addV3PanEventWithOffset(&gameState->events, SMOOTH_STEP_00, EVENT_NULL_FLAG, &gameState->camera.pos, v3(2, 10, 0), 3);
+                                    newEnt->event->nextEvent = addV3PanEventWithOffset(&gameState->events, SMOOTH_STEP_00, EVENT_NULL_FLAG, gameState->camera, v3(2, 10, 0), 3, gameState->eventID++);
                                     newEnt->e->renderScale.x = newEnt->e->renderScale.y = 2;
                                     newEnt->e->renderPosOffset.y = 0.3f;
                                     newEnt->e->animationParent = findAsset((char *)"chubby man animation");
@@ -1687,8 +1375,8 @@ int main(int argc, char *args[]) {
                         } break;
                         default: {
                             //TODO: Test why this is like this. 
-                            float zAt = gameState->camera.pos.z - interacting.e->pos.z;
-                            V2 newPos = v2_minus(mouseP_worldSpace, gameState->camera.pos.xy);
+                            float zAt = gameState->camera->pos.z - interacting.e->pos.z;
+                            V2 newPos = v2_minus(mouseP_worldSpace, gameState->camera->pos.xy);
                             newPos = v2(newPos.x*zAt, newPos.y*zAt);
                             newPos = v2_plus(newPos, gameState->camera.pos.xy);
                             interacting.e->pos.xy = newPos;
@@ -1716,6 +1404,7 @@ int main(int argc, char *args[]) {
 #if IMGUI_ON
             if(debugUI_isOn) {
                 ImGui::Begin("Entity Info");
+                ImGui::InputInt("Position", &interacting.e->ID);            
                 ImGui::InputFloat3("Position", interacting.e->pos.E);            
                 ImGui::InputFloat3("Velocity", interacting.e->dP.E);            
                 ImGui::InputFloat3("Acceleration", interacting.e->ddP.E);            
@@ -1829,7 +1518,103 @@ int main(int argc, char *args[]) {
 
 #if IMGUI_ON
             if(debugUI_isOn) {
-                ImGui::ShowDemoWindow();
+                ImGui::Begin("SaveLoad");
+                //LOAD WORLD button
+                FileNameOfType folderFileNames = getDirectoryFolders(loadDir);
+
+                static char* folder_listbox_items[64];
+                int folderListBoxCount = 0;
+
+                for(int i = 0; i < folderFileNames.count; ++i) {
+                    if(folder_listbox_items[i]) {
+                        free(folder_listbox_items[i]);
+                    }
+                    char *name = folderFileNames.names[i];
+                    folder_listbox_items[folderListBoxCount++] = getFileLastPortion(name);
+                    free(name);
+                }
+
+                static int folder_listbox_item_current = 0;
+                ImGui::ListBox("levels\n", &folder_listbox_item_current, folder_listbox_items, folderListBoxCount, 4);
+
+                char *loadDirName = (char *)folder_listbox_items[folder_listbox_item_current];
+
+                if (ImGui::Button("Load Level")) { 
+                    char *dirNameExe = concat(globalExeBasePath, "levels/");
+                    char *dirName0 = concat(dirNameExe, loadDirName);
+                    char *finalDirName = concat(dirName0, "/"); //TODO: probably don't need this 
+                    printf("%s\n", finalDirName);
+                    loadWorld(gameState, finalDirName);
+                    free(dirNameExe);
+                    free(dirName0);
+                    free(finalDirName);
+                }
+
+                ////SAVE LEVEL BUTTON//
+                static LerpV4 saveTimerDisplay = initLerpV4();
+                static V4 saveColor = COLOR_NULL;
+
+                static char saveDir[256] = "level1";
+                ImGui::InputText("Save Level directory", saveDir, IM_ARRAYSIZE(saveDir));
+                static bool callSaveWorld = false;
+                static bool createdDirectory = false;
+                static char *dirName = 0;
+                char *saveFileName = "mm.txt";
+                if (ImGui::Button("Save Level")) { 
+                    //Maybe there could be a arena you just create, push things on then clear at the end?? instead of the concats with free _each_ string
+
+                    char *dirNameExe = concat(globalExeBasePath, "levels/");
+                    char *dirName0 = concat(dirNameExe, saveDir);
+                    dirName = concat(dirName0, "/"); //make sure there is a slash at the end. 
+
+                    createdDirectory = platformCreateDirectory(dirName);
+                    if(!createdDirectory) {
+                        ImGui::OpenPopup("Delete?");
+                    } else {
+                        callSaveWorld = true;
+                    }
+
+                    free(dirName0);
+                    free(dirNameExe);
+                }
+
+                if (ImGui::BeginPopupModal("Delete?", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+                    ImGui::Text("All those beautiful files will be deleted.\nThis operation cannot be undone!\n\n");
+                    ImGui::Separator();
+
+                    static bool dont_ask_me_next_time = false;
+                    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0,0));
+                    ImGui::Checkbox("Don't ask me next time", &dont_ask_me_next_time);
+                    ImGui::PopStyleVar();
+
+                    if (ImGui::Button("OK", ImVec2(120,0))) { 
+                        ImGui::CloseCurrentPopup(); 
+                        char *exts[1] = {"txt"};
+                        deleteAllFilesOfType(dirName, exts, arrayCount(exts));
+                        callSaveWorld = true;
+                    }
+                    ImGui::SetItemDefaultFocus();
+                    ImGui::SameLine();
+                    if (ImGui::Button("Cancel", ImVec2(120,0))) { ImGui::CloseCurrentPopup(); }
+                    ImGui::EndPopup();
+                } 
+
+                if(callSaveWorld) {
+                    saveWorld(gameState, dirName, saveFileName);
+                    saveColor = COLOR_BLACK;
+                    setLerpInfoV4_s(&saveTimerDisplay, COLOR_NULL, 1, &saveColor);
+                    assert(isOn(&saveTimerDisplay.timer));
+                    free(dirName);
+                    callSaveWorld = false;
+                }
+
+                if(isOn(&saveTimerDisplay.timer)) {
+                    updateLerpV4(&saveTimerDisplay, dt, SMOOTH_STEP_01);
+                    outputText(&mainFontLarge, 0.4f*bufferWidth, 0.5f*bufferHeight, bufferWidth, bufferHeight, (char *)"SAVED", rect2fMinMax(0.2f*bufferWidth, 0, 0.8f*bufferWidth, bufferHeight), saveColor, 1, true);   
+                }
+                /////
+                ImGui::End();
+                //ImGui::ShowDemoWindow();
 
                 ImGui::Begin("General");
                 //ImGui::InputFloat3("Camera position", gameState->camera.pos.E);           
@@ -1850,28 +1635,28 @@ int main(int argc, char *args[]) {
                 //ImGui::Checkbox("Shade Collisions", &shadeColor);
                 //ImGui::SliderFloat("Gravity Power", &gravityPower, 0, 200);            
                 
-                ImGui::RadioButton("DEFAULT", (int *)(&entityType), 1); ImGui::SameLine();
-                ImGui::RadioButton("COLLISION", (int *)(&entityType), 2); ImGui::SameLine();
-                ImGui::RadioButton("DOOR", (int *)(&entityType), 3); ImGui::SameLine();
-                ImGui::RadioButton("PLATFORM", (int *)(&entityType), 4); ImGui::SameLine();
+                ImGui::RadioButton("DEFAULT", (int *)(&entityType), (int)ENTITY_TYPE_ENTITY); ImGui::SameLine();
+                ImGui::RadioButton("COLLISION", (int *)(&entityType), (int)ENTITY_TYPE_COLLISION); ImGui::SameLine();
+                ImGui::RadioButton("DOOR", (int *)(&entityType), (int)ENTITY_TYPE_DOOR); ImGui::SameLine();
+                ImGui::RadioButton("PLATFORM", (int *)(&entityType), (int)ENTITY_TYPE_PLATFORM); ImGui::SameLine();
                 if(mostRecentParentNote) {
-                    ImGui::RadioButton("NOTE", (int *)(&entityType), 5); 
+                    ImGui::RadioButton("NOTE", (int *)(&entityType), (int)ENTITY_TYPE_NOTE); 
                 }
-                ImGui::RadioButton("NOTE_PARENT", (int *)(&entityType), 6); 
-                ImGui::RadioButton("SCENARIO ITEM", (int *)(&entityType), 7); 
-                ImGui::RadioButton("NPC", (int *)(&entityType), 8); 
+                ImGui::RadioButton("NOTE_PARENT", (int *)(&entityType), (int)ENTITY_TYPE_NOTE_PARENT); 
+                ImGui::RadioButton("SCENARIO ITEM", (int *)(&entityType), (int)ENTITY_TYPE_SCENARIO); 
+                ImGui::RadioButton("NPC", (int *)(&entityType), (int)ENTITY_TYPE_NPC); 
 
-                if(entityType == 2) {
+                if(entityType == (int)ENTITY_TYPE_COLLISION) {
                     ImGui::InputFloat("Init Inverse Weight", &initWeight);            
                 }
 
-                if(entityType == 4) {
+                if(entityType == (int)ENTITY_TYPE_PLATFORM) {
                     ImGui::RadioButton("PLATFORM_LINEAR", (int *)(&platformType), (int)PLATFORM_LINEAR); ImGui::SameLine();
                     ImGui::RadioButton("PLATFORM_CIRCLE", (int *)(&platformType), (int)PLATFORM_CIRCLE); ImGui::SameLine();
                     ImGui::RadioButton("PLATFORM_FIGURE_OF_EIGHT", (int *)(&platformType), (int)PLATFORM_FIGURE_OF_EIGHT);
                 }
 
-                if(entityType == 5) {
+                if(entityType == (int)ENTITY_TYPE_NOTE) {
                     ImGui::RadioButton("C NOTE", (int *)(&noteType), (int)C_NOTE); ImGui::SameLine();
                     ImGui::RadioButton("D NOTE", (int *)(&noteType), (int)D_NOTE); ImGui::SameLine();
                     ImGui::RadioButton("D sharp NOTE", (int *)(&noteType), (int)D_SHARP_NOTE); ImGui::SameLine();
@@ -1882,7 +1667,7 @@ int main(int argc, char *args[]) {
                     ImGui::RadioButton("B NOTE", (int *)(&noteType), (int)B_NOTE); ImGui::SameLine();
                 }
 
-                if(entityType == 6) {
+                if(entityType == (int)ENTITY_TYPE_NOTE_PARENT) {
                     ImGui::InputText("note parent values", noteBuf, IM_ARRAYSIZE(noteBuf));
                 }
 
@@ -1897,63 +1682,7 @@ int main(int argc, char *args[]) {
                 }
                 currentTex = asset;
 
-                ////SAVE LEVEL BUTTON//
-                static LerpV4 saveTimerDisplay = initLerpV4();
-                static V4 saveColor = COLOR_NULL;
-
-                ImGui::InputText("Save Level directory", saveDir, IM_ARRAYSIZE(saveDir));
-                
-                if (ImGui::Button("Save Level")) { 
-
-                    char *saveFileName = "mm.txt";
-
-                    //Maybe there could be a arena you just create, push things on then clear at the end?? instead of the concats with free _each_ string
-                    char *dirName0 = concat("../res/levels/", saveDir);
-                    char *dirName = concat(dirName0, "/"); //make sure there is a slash at the end. 
-
-                    bool createdDirectory = platformCreateDirectory(dirName);
-
-                    ImGui::OpenPopup("Delete?");
-                    if (ImGui::BeginPopupModal("Delete?", NULL, ImGuiWindowFlags_AlwaysAutoResize))
-                    {
-                        ImGui::Text("All those beautiful files will be deleted.\nThis operation cannot be undone!\n\n");
-                        ImGui::Separator();
-
-                        //static int dummy_i = 0;
-                        //ImGui::Combo("Combo", &dummy_i, "Delete\0Delete harder\0");
-
-                        static bool dont_ask_me_next_time = false;
-                        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0,0));
-                        ImGui::Checkbox("Don't ask me next time", &dont_ask_me_next_time);
-                        ImGui::PopStyleVar();
-
-                        if (ImGui::Button("OK", ImVec2(120,0))) { ImGui::CloseCurrentPopup(); }
-                        ImGui::SetItemDefaultFocus();
-                        ImGui::SameLine();
-                        if (ImGui::Button("Cancel", ImVec2(120,0))) { ImGui::CloseCurrentPopup(); }
-                        ImGui::EndPopup();
-                    }
-
-                    if(createdDirectory) {
-                        char *exts[1] = {"txt"};
-                        deleteAllFilesOfType(dirName, exts, arrayCount(exts));
-                    } else {
-                        printf("%s\n", "created folder");
-                    }
-
-                    saveWorld(gameState, dirName, saveFileName);
-
-                    free(dirName);
-
-                    saveColor = COLOR_BLACK;
-                    setLerpInfoV4_s(&saveTimerDisplay, COLOR_NULL, 1, &saveColor);
-                    assert(isOn(&saveTimerDisplay.timer));
-                }
-                if(isOn(&saveTimerDisplay.timer)) {
-                    updateLerpV4(&saveTimerDisplay, dt, SMOOTH_STEP_01);
-                    outputText(&mainFontLarge, 0.4f*bufferWidth, 0.5f*bufferHeight, bufferWidth, bufferHeight, (char *)"SAVED", rect2fMinMax(0.2f*bufferWidth, 0, 0.8f*bufferWidth, bufferHeight), saveColor, 1, true);   
-                }
-                /////
+                //TODO: Maybe there could be a arena you just create, push things on then clear at the end?? instead of the concats with free _each_ string
 
                 if (ImGui::Button("Undo")) { 
                     printf("Buffer count: %d\n", gameState->undoBuffer.count);

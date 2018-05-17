@@ -9,11 +9,9 @@ typedef struct {
     Array_Dynamic platformEnts;
     Array_Dynamic noteEnts;
     Array_Dynamic noteParentEnts;
-    Array_Dynamic particleSystems;
     Array_Dynamic npcEntities;
+    Array_Dynamic particleSystems;
     Array_Dynamic events;
-
-    Entity_Commons camera;
 
     V2 mouseOffset;
     V2 interactStartingMouseP;
@@ -26,5 +24,9 @@ typedef struct {
     Array_Dynamic undoBuffer;
 
     int ID;
+    int eventID;
+
+    Entity *player;
+    Entity_Commons *camera;
     
 } GameState;

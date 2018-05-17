@@ -1,17 +1,18 @@
-Collision: {
+Door: {
+	partnerID: 3;
 
 }
 Commons: {
-	id: 0;
+	id: 2;
 	name: "(null)";
-	flags: 189;
-	type: "ENT_TYPE_WORLD_COLLISION";
-	position: 1.000000 1.000000 -1.000000;
+	flags: 177;
+	type: "ENT_TYPE_DEFAULT";
+	position: 4.650000 2.283334 -1.000000;
 	renderPosOffset: 0.000000 0.000000 0.000000;
-	dim: 30.000000 1.000000 1.000000;
+	dim: 1.000000 1.000000 1.000000;
 	renderScale: 1.000000 1.000000 1.000000;
 	shading: 1.000000 1.000000 1.000000 1.000000;
-	texture: "scrollTexture2.jpg";
+	texture: "door1.png";
 	inverseWeight: 0.000000;
 
 }

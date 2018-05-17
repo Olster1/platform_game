@@ -37,12 +37,16 @@ TimerReturnInfo updateTimer(Timer *timer, float dt) {
     return returnInfo; 
 }
 
+#define LERP_TYPE(FUNC) \
+FUNC(LINEAR) \
+FUNC(SMOOTH_STEP_01) \
+FUNC(SMOOTH_STEP_00) \
 
 typedef enum {
-    LINEAR, 
-    SMOOTH_STEP_01,
-    SMOOTH_STEP_00,
+    LERP_TYPE(ENUM)
 } LerpType;
+
+static char *LerpTypeStrings[] = { LERP_TYPE(STRING) };
 
 typedef struct {
     float a;
@@ -74,7 +78,7 @@ typedef struct {
     V3 *val;
     Timer timer;
 } LerpV3;
-
+//TODO: change this to its own TimerVarType
 typedef enum {
     VAR_CHAR_STAR,
     VAR_LONG_INT,
@@ -83,6 +87,7 @@ typedef enum {
     VAR_V2,
     VAR_V3,
     VAR_V4,
+    VAR_BOOL,
 } VarType;
 
 float updateLerpf_(float tAt, Lerpf *f, LerpType lerpType, TimerReturnInfo timeInfo) {

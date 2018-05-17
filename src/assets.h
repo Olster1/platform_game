@@ -1,7 +1,8 @@
 typedef enum {
     ASSET_TEXTURE,
     ASSET_SOUND, 
-    ASSET_ANIMATION    
+    ASSET_ANIMATION,
+    ASSET_EVENT        
 } AssetType;
 
 typedef struct Asset Asset;
@@ -54,6 +55,7 @@ Asset *findAsset(char *fileName) {
 #define findTextureAsset(fileName) (Texture *)findAsset(fileName)->file
 #define findSoundAsset(fileName) (WavFile *)findAsset(fileName)->file
 #define findAnimationAsset(fileName) (AnimationParent *)findAsset(fileName)->file
+#define findEventAsset(fileName) (Event *)findAsset(fileName)->file
 
 Texture *getTextureAsset(Asset *assetPtr) {
     Texture *result = (Texture *)(assetPtr->file);
@@ -69,6 +71,12 @@ WavFile *getSoundAsset(Asset *assetPtr) {
 
 AnimationParent *getAnimationAsset(Asset *assetPtr) {
     AnimationParent *result = (AnimationParent *)(assetPtr->file);
+    assert(result);
+    return result;
+}
+
+Event *getEventAsset(Asset *assetPtr) {
+    Event *result = (Event *)(assetPtr->file);
     assert(result);
     return result;
 }
@@ -104,6 +112,11 @@ Asset *addAssetTexture(char *fileName, Texture *asset) { // we have these for ty
 }
 
 Asset *addAssetSound(char *fileName, WavFile *asset) { // we have these for type checking
+    Asset *result = addAsset_(fileName, asset);
+    return result;
+}
+
+Asset *addAssetEvent(char *fileName, Event *asset) { // we have these for type checking
     Asset *result = addAsset_(fileName, asset);
     return result;
 }

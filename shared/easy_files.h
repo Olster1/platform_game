@@ -63,7 +63,7 @@ typedef struct {
 bool isInCharList(char *ext, char **exts, int count) {
     bool result = false;
     for(int i = 0; i < count; i++) {
-        if(strcmp(ext, exts[i]) == 0) {
+        if(cmpStrNull(ext, exts[i])) {
             result = true;
             break;
         }
@@ -71,8 +71,14 @@ bool isInCharList(char *ext, char **exts, int count) {
     return result;
 }
 
+typedef enum {
+    DIR_FIND_FILE_TYPE,
+    DIR_DELETE_FILE_TYPE,
+    DIR_FIND_DIR_TYPE,
+} DirTypeOperation;
+
 //TODO: can we make this into a multiple purpose function for deleting files etc.??
-FileNameOfType getDirectoryFilesOfType(char *dirName, char **exts, int count) { 
+FileNameOfType getDirectoryFilesOfType_(char *dirName, char **exts, int count, DirTypeOperation opType) { 
     FileNameOfType fileNames = {};
     #ifdef __APPLE__
         DIR *directory = opendir(dirName);
@@ -85,11 +91,25 @@ FileNameOfType getDirectoryFilesOfType(char *dirName, char **exts, int count) {
                    if (dp) {
                         char *fileName = concat(dirName, dp->d_name);
                         char *ext = getFileExtension(fileName);
-                        //TODO: Make this to an array of options
-                        if(isInCharList(ext, exts, count)) {
-                            //is an image file. 
-                            assert(fileNames.count < arrayCount(fileNames.names));
-                            fileNames.names[fileNames.count++] = fileName;
+                        switch(opType) {
+                            case DIR_FIND_FILE_TYPE: {
+                                if(isInCharList(ext, exts, count)) {
+                                    assert(fileNames.count < arrayCount(fileNames.names));
+                                    fileNames.names[fileNames.count++] = fileName;
+                                }
+                            } break;
+                            case DIR_DELETE_FILE_TYPE: {
+                                if(isInCharList(ext, exts, count)) {
+                                    remove(fileName);
+                                    free(fileName);
+                                }
+                            } break;
+                            case DIR_FIND_DIR_TYPE: {
+                                if(!ext) { //is folder
+                                    assert(fileNames.count < arrayCount(fileNames.names));
+                                    fileNames.names[fileNames.count++] = fileName;
+                                }
+                            } break;
                         }
                    }
                } while (dp);
@@ -100,8 +120,11 @@ FileNameOfType getDirectoryFilesOfType(char *dirName, char **exts, int count) {
     #endif
 
     return fileNames;
-
 }
+
+#define getDirectoryFilesOfType(dirName, exts, count) getDirectoryFilesOfType_(dirName, exts, count, DIR_FIND_FILE_TYPE)
+#define deleteAllFilesOfType(dirName, exts, count) getDirectoryFilesOfType_(dirName, exts, count, DIR_DELETE_FILE_TYPE)
+#define getDirectoryFolders(dirName) getDirectoryFilesOfType_(dirName, 0, 0, DIR_FIND_DIR_TYPE)
 
 void platformDeleteFile(char *fileName) {
     if(remove(fileName) != 0) {
@@ -109,26 +132,17 @@ void platformDeleteFile(char *fileName) {
     }
 }
 
-void deleteAllFilesOfType(char *dir, char **exts, int count) {
-    FileNameOfType files = getDirectoryFilesOfType(dir, exts, count);
-
-    for(int i = 0; i < files.count; ++i) {
-        char *name = files.names[i];
-        platformDeleteFile(name);
-    }
-}
-
 #include <errno.h>
 #include <sys/stat.h> //for mkdir S_IRWXU
 bool platformCreateDirectory(char *fileName) {
 
+    printf("%s\n", fileName);
     bool result = false;
     DIR* dir = opendir(fileName);
     if (dir) {
         closedir(dir);
         printf("%s %s\n", "exists", fileName);
-    }
-    else if (ENOENT == errno) {
+    } else if (ENOENT == errno) {
         printf("%s\n", "platformCreateDirectory dir");
         if(mkdir(fileName, S_IRWXU) == -1) {
             assert(!"couldn't create directory");

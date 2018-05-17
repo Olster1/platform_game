@@ -110,13 +110,17 @@ bool stringsMatchN(char *a, int aLength, char *b, int bLength) {
 } 
 
 
+bool stringsMatchNullN(char *a, char *b, int bLen) {
+    bool result = stringsMatchN(a, strlen(a), b, bLen);
+    return result;
+}
+
 bool cmpStrNull(char *a, char *b) {
     bool result = stringsMatchN(a, strlen(a), b, strlen(b));
     return result;
 }
 
-char *nullTerminate(char *string, int length) {
-    char *result = (char *)malloc(length + 1);
+char *nullTerminateBuffer(char *result, char *string, int length) {
     for(int i = 0; i < length; ++i) {
         result[i]= string[i];
     }
@@ -124,12 +128,14 @@ char *nullTerminate(char *string, int length) {
     return result;
 }
 
+#define nullTerminate(string, length) nullTerminateBuffer((char *)malloc(length + 1), string, length)
+
 char *concat(char *a, char *b) {
     int aLen = strlen(a);
     int bLen = strlen(b);
     
-    int newStrLen = aLen + bLen + 1;
-    char *newString = (char *)calloc(newStrLen, 1); // +1 for null terminator
+    int newStrLen = aLen + bLen + 1; // +1 for null terminator
+    char *newString = (char *)calloc(newStrLen, 1); 
     newString[newStrLen - 1] = '\0';
     
     char *at = newString;
@@ -144,6 +150,20 @@ char *concat(char *a, char *b) {
     }
     
     return newString;
+}
+
+#define ENUM(value) value,
+#define STRING(value) #value,
+
+int findEnumValue(char *name, char **names, int nameCount) {
+    int result = -1; //not found
+    for(int i = 0; i < nameCount; i++) {
+        if(cmpStrNull(name, names[i])) {
+            result = i;
+            break;
+        }
+    }
+    return result;
 }
 
 typedef enum {
