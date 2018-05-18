@@ -1,20 +1,18 @@
-Note: {
-	sound: "c_note.wav";
-	noteValue: "C_NOTE";
-	parentID: 8;
+Door: {
+	partnerID: 3;
 
 }
 Commons: {
-	id: 9;
+	id: 4;
 	name: "(null)";
 	flags: 177;
 	type: "ENT_TYPE_DEFAULT";
-	position: 11.008252 2.166462 -1.000000;
-	renderPosOffset: 0.000000 -0.058951 0.000000;
+	position: 3.500000 1.933333 -1.000000;
+	renderPosOffset: 0.000000 0.000000 0.000000;
 	dim: 1.000000 1.000000 1.000000;
 	renderScale: 1.000000 1.000000 1.000000;
 	shading: 1.000000 1.000000 1.000000 1.000000;
-	texture: "MusicalNote.png";
+	texture: "door1.png";
 	inverseWeight: 0.000000;
 
 }

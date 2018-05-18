@@ -9,7 +9,8 @@ typedef enum {
     ENTITY_TYPE_PLATFORM,
     ENTITY_TYPE_COMMONS,
     ENTITY_TYPE_SCENARIO,
-    ENTITY_TYPE_EVENT
+    ENTITY_TYPE_EVENT,
+    ENTITY_TYPE_CAMERA
 } EntType;
 
 
@@ -148,7 +149,9 @@ void outputCommonData(InfiniteAlloc *mem, Entity_Commons *ent) {
     addVar(mem, ent->renderScale.E, "renderScale", VAR_V3);
     addVar(mem, ent->shading.E, "shading", VAR_V4);
 
-    addVar(mem, ent->tex->name, "texture", VAR_CHAR_STAR);
+    if(ent->tex) {
+        addVar(mem, ent->tex->name, "texture", VAR_CHAR_STAR);
+    }
     addVar(mem, &ent->inverseWeight, "inverseWeight", VAR_FLOAT);
 
     if(ent->animationParent) {
@@ -157,17 +160,17 @@ void outputCommonData(InfiniteAlloc *mem, Entity_Commons *ent) {
     endDataType(mem);
 }
 
-char *getEntName(char *prepend, Entity_Commons *ent) {
+char *getEntName(char *prepend, int ID) {
     char name[256];
-    sprintf(name, "_%d_", ent->ID);
+    sprintf(name, "_%d_", ID);
     char *entFileName = concat(prepend, name);
     return entFileName;
 }
 
-EntFileData beginEntFileData(char *dirName, char *fileName_, char *entType, Entity_Commons *ent) {
+EntFileData beginEntFileData(char *dirName, char *fileName_, char *entType, int id) {
     EntFileData result = {};
 
-    char *entName = getEntName(entType, ent);
+    char *entName = getEntName(entType, id);
     char *a = concat(dirName, entName);
     char *entFileName = concat(a, fileName_);
 
@@ -187,15 +190,12 @@ void endEntFileData(EntFileData *data) {
 
 void saveWorld(GameState *gameState, char *dir, char *fileName) {
     
-    //TODO: Do events want to be assets
-
     // initArray(&gameState->particleSystems, particle_system);
-    // initArray(&gameState->events, Event);
 
     for(int entIndex = 0; entIndex < gameState->npcEntities.count; entIndex++) {
         NPC *ent = (NPC *)getElement(&gameState->npcEntities, entIndex);
         if(ent && isFlagSet(ent->e, ENTITY_VALID)) {
-            EntFileData fileData = beginEntFileData(dir, fileName, "NPC", ent->e);
+            EntFileData fileData = beginEntFileData(dir, fileName, "NPC", ent->e->ID);
             beginDataType(&fileData.mem, "NPC");
             if(ent->event) {
                 addVar(&fileData.mem, &ent->event->ID, "eventID", VAR_INT);
@@ -210,7 +210,7 @@ void saveWorld(GameState *gameState, char *dir, char *fileName) {
     for(int entIndex = 0; entIndex < gameState->noteParentEnts.count; entIndex++) {
         NoteParent *ent = (NoteParent *)getElement(&gameState->noteParentEnts, entIndex);
         if(ent && isFlagSet(ent->e, ENTITY_VALID)) {
-            EntFileData fileData = beginEntFileData(dir, fileName, "noteParent", ent->e);
+            EntFileData fileData = beginEntFileData(dir, fileName, "noteParent", ent->e->ID);
 
             beginDataType(&fileData.mem, "NoteParent");
             addVar(&fileData.mem, &ent->noteValueCount, "noteValueCount", VAR_INT);
@@ -240,7 +240,7 @@ void saveWorld(GameState *gameState, char *dir, char *fileName) {
     for(int entIndex = 0; entIndex < gameState->noteEnts.count; entIndex++) {
         Note *ent = (Note *)getElement(&gameState->noteEnts, entIndex);
         if(ent && isFlagSet(ent->e, ENTITY_VALID)) {
-            EntFileData fileData = beginEntFileData(dir, fileName, "note", ent->e);
+            EntFileData fileData = beginEntFileData(dir, fileName, "note", ent->e->ID);
 
             beginDataType(&fileData.mem, "Note");
             if(ent->sound) {
@@ -259,7 +259,7 @@ void saveWorld(GameState *gameState, char *dir, char *fileName) {
     for(int entIndex = 0; entIndex < gameState->entities.count; entIndex++) {
         Entity *ent = (Entity *)getElement(&gameState->entities, entIndex);
         if(ent && isFlagSet(ent->e, ENTITY_VALID)) {
-            EntFileData fileData = beginEntFileData(dir, fileName, "entity", ent->e);
+            EntFileData fileData = beginEntFileData(dir, fileName, "entity", ent->e->ID);
 
             beginDataType(&fileData.mem, "Entity");
             if(ent->event) {
@@ -276,7 +276,7 @@ void saveWorld(GameState *gameState, char *dir, char *fileName) {
     for(int entIndex = 0; entIndex < gameState->platformEnts.count; entIndex++) {
         Entity *ent = (Entity *)getElement(&gameState->platformEnts, entIndex);
         if(ent && isFlagSet(ent->e, ENTITY_VALID)) {
-            EntFileData fileData = beginEntFileData(dir, fileName, "platform", ent->e);
+            EntFileData fileData = beginEntFileData(dir, fileName, "platform", ent->e->ID);
 
             beginDataType(&fileData.mem, "Platform");
             addVar(&fileData.mem, ent->centerPoint.E, "centerPoint", VAR_V3);
@@ -295,7 +295,7 @@ void saveWorld(GameState *gameState, char *dir, char *fileName) {
     for(int entIndex = 0; entIndex < gameState->collisionEnts.count; entIndex++) {
         Collision_Object *ent = (Collision_Object *)getElement(&gameState->collisionEnts, entIndex);
         if(ent && isFlagSet(ent->e, ENTITY_VALID)) {
-            EntFileData fileData = beginEntFileData(dir, fileName, "collision", ent->e);
+            EntFileData fileData = beginEntFileData(dir, fileName, "collision", ent->e->ID);
             beginDataType(&fileData.mem, "Collision");
             endDataType(&fileData.mem);
 
@@ -307,7 +307,7 @@ void saveWorld(GameState *gameState, char *dir, char *fileName) {
     for(int entIndex = 0; entIndex < gameState->doorEnts.count; entIndex++) {
         Door *ent = (Door *)getElement(&gameState->doorEnts, entIndex);
         if(ent && isFlagSet(ent->e, ENTITY_VALID)) {
-            EntFileData fileData = beginEntFileData(dir, fileName, "door", ent->e);
+            EntFileData fileData = beginEntFileData(dir, fileName, "door", ent->e->ID);
             beginDataType(&fileData.mem, "Door");
             addVar(&fileData.mem, &ent->partner->e->ID, "partnerID", VAR_INT);
             endDataType(&fileData.mem);
@@ -320,29 +320,31 @@ void saveWorld(GameState *gameState, char *dir, char *fileName) {
 
     for(int entIndex = 0; entIndex < gameState->events.count; entIndex++) {
         Event *ent = (Event *)getElement(&gameState->events, entIndex);
-        if(ent && isFlagSet(ent->e, ENTITY_VALID)) {
-            EntFileData fileData = beginEntFileData(dir, fileName, "event", ent->e);
+        if(ent) {
+            EntFileData fileData = beginEntFileData(dir, fileName, "event", ent->ID);
             beginDataType(&fileData.mem, "Event");
-            addVar(&fileData.mem, ent->ID, "ID", VAR_INT);
+            addVar(&fileData.mem, &ent->ID, "ID", VAR_INT);
             addVar(&fileData.mem, EventTypeStrings[ent->type], "type", VAR_CHAR_STAR);
-            addVar(&fileData.mem, ent->entId, "entId", VAR_INT);
+            addVar(&fileData.mem, &ent->entId, "entId", VAR_INT);
             addVar(&fileData.mem, ent->dim.E, "dim", VAR_V3);
-            addVar(&fileData.mem, ent->flags, "flags", VAR_LONG_INT);
-            addVar(&fileData.mem, ent->sound->name, "sound", VAR_CHAR_STAR);
+            addVar(&fileData.mem, &ent->flags, "flags", VAR_LONG_INT);
+            if(ent->sound) {
+                addVar(&fileData.mem, ent->sound->name, "sound", VAR_CHAR_STAR);
+            }
             if(ent->nextEvent) {
-                addVar(&fileData.mem, ent->nextEvent->ID, "nextEventID", VAR_INT);
+                addVar(&fileData.mem, &ent->nextEvent->ID, "nextEventID", VAR_INT);
             }
             
             if(ent->type == EVENT_DIALOG) {
-                addVar(&fileData.mem, ent->dialogCount, "dialogCount", VAR_INT);
+                addVar(&fileData.mem, &ent->dialogCount, "dialogCount", VAR_INT);
                 addVarArray(&fileData.mem, ent->dialog, ent->dialogCount, "dialog", VAR_CHAR_STAR);
-                addVar(&fileData.mem, ent->dialogTimer.period, "dialogTimerPeriod", VAR_FLOAT);
-                addVar(&fileData.mem, ent->dialogDisplayValue, "dialogDisplayValue", VAR_FLOAT);
-            } else if(event->type == EVENT_V3_PAN) {
+                addVar(&fileData.mem, &ent->dialogTimer.period, "dialogTimerPeriod", VAR_FLOAT);
+                addVar(&fileData.mem, &ent->dialogDisplayValue, "dialogDisplayValue", VAR_FLOAT);
+            } else if(ent->type == EVENT_V3_PAN) {
                 addVar(&fileData.mem, LerpTypeStrings[ent->lerpType], "lerpType", VAR_CHAR_STAR);
-                addVar(&fileData.mem, ent->lerpValueV3.b, "lerpB", VAR_V3);
-                addVar(&fileData.mem, ent->entId, "lerpEntId", VAR_INT);
-                addVar(&fileData.mem, ent->lerpValueV3.timer.period, "lerpTimerPeriod", VAR_FLOT);
+                addVar(&fileData.mem, ent->lerpValueV3.b.E, "lerpB", VAR_V3);
+                addVar(&fileData.mem, &ent->entId, "lerpEntId", VAR_INT);
+                addVar(&fileData.mem, &ent->lerpValueV3.timer.period, "lerpTimerPeriod", VAR_FLOAT);
             }
             endDataType(&fileData.mem);
 
@@ -351,7 +353,8 @@ void saveWorld(GameState *gameState, char *dir, char *fileName) {
     }
 
     {
-        EntFileData fileData = beginEntFileData(dir, fileName, "camera", gameState->camera);
+        assert(gameState->camera);
+        EntFileData fileData = beginEntFileData(dir, fileName, "camera", gameState->camera->ID);
 
         beginDataType(&fileData.mem, "Camera");
         endDataType(&fileData.mem);
@@ -448,15 +451,14 @@ InfiniteAlloc getDataObjects(EasyTokenizer *tokenizer) {
             } break;
             case TOKEN_FLOAT: {
                 char charBuffer[256] = {};
-                float value = atof(nullTerminateBuffer(charBuffer, token.at, token.size));
-
+                nullTerminateBuffer(charBuffer, token.at, token.size);
+                float value = atof(charBuffer);
+                
                 DataObject data = {};
                 data.type = VAR_FLOAT;
                 
-                float *var = &data.floatVal;
-                *var = value;
+                data.floatVal = value;
                 addElementInifinteAlloc_(&types, &data);
-
             } break;
             case TOKEN_BOOL: {
                 DataObject data = {};
@@ -558,12 +560,12 @@ int getIntFromDataObjects(InfiniteAlloc *data, EasyTokenizer *tokenizer) {
     return result;
 }
 
-int getFloatFromDataObjects(InfiniteAlloc *data, EasyTokenizer *tokenizer) {
+float getFloatFromDataObjects(InfiniteAlloc *data, EasyTokenizer *tokenizer) {
     *data = getDataObjects(tokenizer);
     DataObject *objs = (DataObject *)data->memory;
     assert(objs[0].type == VAR_FLOAT);
     
-    int result = objs[0].floatVal;
+    float result = objs[0].floatVal;
     return result;
 }
 
@@ -625,6 +627,10 @@ void loadWorld(GameState *gameState, char *dir) {
                         entData.collision = (Collision_Object *)getEmptyElement(&gameState->collisionEnts);
                         setupCollisionEnt(entData.collision, entData.commons);
                     }
+                    if(stringsMatchNullN("Camera", token.at, token.size)) {
+                        entData.type = ENTITY_TYPE_CAMERA;
+                        gameState->camera = entData.commons;
+                    }
                     if(stringsMatchNullN("Entity", token.at, token.size)) {
                         entData.type = ENTITY_TYPE_ENTITY;
                         entData.entity = (Entity *)getEmptyElement(&gameState->entities);
@@ -649,6 +655,7 @@ void loadWorld(GameState *gameState, char *dir) {
                         entData.type = ENTITY_TYPE_EVENT;
                         entData.event = (Event *)getEmptyElement(&gameState->events);
                         setupEmptyEvent(entData.event);
+                        printf("%s\n", "foundEvent");
                     }
 
                     if(entData.type == ENTITY_TYPE_EVENT) {
@@ -703,7 +710,10 @@ void loadWorld(GameState *gameState, char *dir) {
                             
                             for(int dialogIndex = 0; dialogIndex < data.count; dialogIndex++) {
                                 assert(objs[dialogIndex].type == VAR_CHAR_STAR);    
-                                entData.event->dialog[dialogIndex] = objs[dialogIndex].stringVal;
+                                //TODO: Do we want to allocate this to an arena??
+                                char *tempStr = objs[dialogIndex].stringVal;
+                                char *dialogString = nullTerminate(tempStr, strlen(tempStr));
+                                entData.event->dialog[dialogIndex] = dialogString;
                             }
                         }
                         if(stringsMatchNullN("dialogTimerPeriod", token.at, token.size)) {
@@ -718,7 +728,7 @@ void loadWorld(GameState *gameState, char *dir) {
                             entData.event->lerpType = (LerpType)type;
                         }
                         if(stringsMatchNullN("lerpB", token.at, token.size)) {
-                            entData.event->lerpValueV3.b = getFloatFromDataObjects(&data, &tokenizer);
+                            entData.event->lerpValueV3.b = buildV3FromDataObjects(&data, &tokenizer);
                         }
                         if(stringsMatchNullN("lerpEntId", token.at, token.size)) {
                             int entId = getIntFromDataObjects(&data, &tokenizer);
@@ -734,6 +744,17 @@ void loadWorld(GameState *gameState, char *dir) {
                         }
                     }
 
+                    if(entData.type == ENTITY_TYPE_NPC) {
+                        if(stringsMatchNullN("eventID", token.at, token.size)) {
+                            int entId = getIntFromDataObjects(&data, &tokenizer);
+
+                            assert(patchCount < arrayCount(patches));
+                            PointerToPatch *patch = patches + patchCount++;
+                            patch->type = PATCH_TYPE_EVENT;
+                            patch->id = entId;
+                            patch->ptr = (void **)(&entData.npc->event);
+                        }
+                    }
                     //platform data
                     if(entData.type == ENTITY_TYPE_PLATFORM) {
                         if(stringsMatchNullN("centerPoint", token.at, token.size)) {
@@ -744,6 +765,15 @@ void loadWorld(GameState *gameState, char *dir) {
                             int typeAsInt = findEnumValue(name, PlatformTypeStrings, arrayCount(PlatformTypeStrings));
                             assert(typeAsInt >= 0);
                             entData.platform->platformType = (PlatformType)typeAsInt;
+                        }
+                        if(stringsMatchNullN("eventID", token.at, token.size)) {
+                            int entId = getIntFromDataObjects(&data, &tokenizer);
+
+                            assert(patchCount < arrayCount(patches));
+                            PointerToPatch *patch = patches + patchCount++;
+                            patch->type = PATCH_TYPE_EVENT;
+                            patch->id = entId;
+                            patch->ptr = (void **)(&entData.platform->event);
                         }
                     }
                     /// 
@@ -789,6 +819,15 @@ void loadWorld(GameState *gameState, char *dir) {
                                 entData.noteParent->sequence[noteIndex] = (NoteValue)typeAsInt;
                             }
                         }
+                        if(stringsMatchNullN("eventID", token.at, token.size)) {
+                            int entId = getIntFromDataObjects(&data, &tokenizer);
+
+                            assert(patchCount < arrayCount(patches));
+                            PointerToPatch *patch = patches + patchCount++;
+                            patch->type = PATCH_TYPE_EVENT;
+                            patch->id = entId;
+                            patch->ptr = (void **)(&entData.noteParent->eventToTrigger);
+                        }
                     }
                     //
                     //Door data
@@ -800,6 +839,18 @@ void loadWorld(GameState *gameState, char *dir) {
                             patch->id = getIntFromDataObjects(&data, &tokenizer);
                             patch->ptr = (void **)(&entData.door->partner);
                             assert(patch->ptr);
+                        }
+                    }
+                    //parse entity 
+                    if(entData.type == ENTITY_TYPE_ENTITY) {
+                        if(stringsMatchNullN("eventID", token.at, token.size)) {
+                            int entId = getIntFromDataObjects(&data, &tokenizer);
+
+                            assert(patchCount < arrayCount(patches));
+                            PointerToPatch *patch = patches + patchCount++;
+                            patch->type = PATCH_TYPE_EVENT;
+                            patch->id = entId;
+                            patch->ptr = (void **)(&entData.entity->event);
                         }
                     }
                     //parse commons data
@@ -921,4 +972,5 @@ void loadWorld(GameState *gameState, char *dir) {
     gameState->ID = maxId + 1;
 
     assert(gameState->player);
+    assert(gameState->camera);
 }

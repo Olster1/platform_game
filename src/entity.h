@@ -395,7 +395,7 @@ void setupNPCEnt(NPC *entity, Entity_Commons *common) {
 	entity->state = NPC_IDLE;
 }
 
-void initNPCEnt(GameState *gameState, Array_Dynamic *commons_, Array_Dynamic *events, NPC *entity, V3 pos, Asset *tex, float inverseWeight, int ID) {
+void initNPCEnt(Array_Dynamic *commons_, Array_Dynamic *events, NPC *entity, V3 pos, Asset *tex, float inverseWeight, int ID, int eventId) {
 	memset(entity, 0, sizeof(NPC)); //clear entity to null
 	entity->e = initEntityCommons(entity, commons_, pos, tex, inverseWeight, ID);
 	entity->e->type = ENT_TYPE_DEFAULT;
@@ -403,7 +403,13 @@ void initNPCEnt(GameState *gameState, Array_Dynamic *commons_, Array_Dynamic *ev
 	unSetFlag(entity->e, ENTITY_COLLIDES_WITH_PLAYER);
 		
 	setupNPCEnt(entity, 0);
-	entity->event = addDialogEvent(events, &entity->e, v3_scale(2, entity->e->dim), EVENT_EXPLICIT | EVENT_TRIGGER, gameState->eventID++);
+	Entity_Commons *com = entity->e;
+	
+	Event_EntCommonsInfo evComInfo = {};
+	evComInfo.id = com->ID;
+	evComInfo.pos = &com->pos;
+	
+	entity->event = addDialogEvent(events, &evComInfo, v3_scale(2, entity->e->dim), EVENT_EXPLICIT | EVENT_TRIGGER, eventId);
 }
 
 #define calculateRenderInfoForEntity(ent, cameraPos, metresToPixels) calculateRenderInfo(v3_plus(ent->pos, ent->renderPosOffset), ent->dim, cameraPos, metresToPixels)

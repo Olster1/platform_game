@@ -61,8 +61,8 @@ static Texture globalFireTex_debug = {};
 //#include "../shared/easy_ui.h"
 
 #include "animations.h" //this was pulled out because entities need it. and The animation file needs entities...
-#include "assets.h"
 #include "event.h"
+#include "assets.h"
 #include "entity.h"
 #include "main.h"
 #include "undo_buffer.h"
@@ -346,7 +346,7 @@ int main(int argc, char *args[]) {
         assert(gameState->player->e->animationParent);
         AddAnimationToList(gameState, &gameState->longTermArena, gameState->player->e, FindAnimation(gameState->KnightAnimations.anim, gameState->KnightAnimations.count, (char *)"Knight_Idle"));
 
-        gameState->camera = initEntityCommons(void *entParent, &gameState->commons, v3(0, 0, 0), 0, 0, gameState->ID++);
+        gameState->camera = initEntityCommons(0, &gameState->commons, v3(0, 0, 0), 0, 0, gameState->ID++);
         gameState->camera->pos.z = 0;
         setFlag(gameState->camera, ENTITY_CAMERA);
         unSetFlag(gameState->camera, ENTITY_COLLIDES);
@@ -598,7 +598,7 @@ int main(int argc, char *args[]) {
                 theta += dt;
                 V3 posAt = *hotEvent->pos;
                 posAt.y += 0.1f*sin(theta);
-                RenderInfo renderInfo = calculateRenderInfo(posAt, v3(0.5f, 0.5f, 0), gameState->camera.pos, metresToPixels);
+                RenderInfo renderInfo = calculateRenderInfo(posAt, v3(0.5f, 0.5f, 0), gameState->camera->pos, metresToPixels);
                 //printf("%f\n", hotEvent->pos->z);
                 //printf("%f\n---\n", renderInfo.pos.z);
                 
@@ -615,6 +615,8 @@ int main(int argc, char *args[]) {
                     case EVENT_V3_PAN: {             
                         if(isEventFlagSet(currentEvent, EVENT_FRESH)) {           
                             renewPanEventV3(currentEvent);
+                            assert(currentEvent->lerpValueV3.val);
+                            assert(currentEvent->lerpValueV3.val == &gameState->camera->pos);
                             unSetEventFlag(currentEvent, EVENT_FRESH);
                         }
                         updateLerpV3(&currentEvent->lerpValueV3, dt, currentEvent->lerpType);
@@ -628,10 +630,7 @@ int main(int argc, char *args[]) {
                             //Don't need to do anything. 
                         }
                         if(wasPressed(gameButtons, BUTTON_UP)) {
-                            inputAccel.y = 1;
-                        }
-                        if(isDown(gameButtons, BUTTON_DOWN)) {
-                            inputAccel.y = -1;
+                            //TODO: Skip dialog
                         }
 
                         char *text = currentEvent->dialog[currentEvent->dialogAt];    
@@ -689,7 +688,7 @@ int main(int argc, char *args[]) {
             
             ////UPDATE CAMERA///
             if(followPlayer && !currentEvent) {
-                V3 relPos = v3_minus(gameState->player->e->pos, gameState->camera.pos);
+                V3 relPos = v3_minus(gameState->player->e->pos, gameState->camera->pos);
                 V3 followDim = v3(2, 2, 2);
 #if 1
                 float power = 100;
@@ -704,7 +703,7 @@ int main(int argc, char *args[]) {
                         camForce.z += power*signOf(relPos.z);
                     }
 
-                    easy_phys_updatePosAndVel(&gameState->camera.pos, &gameState->camera.dP, camForce, dt, 0.6f);
+                    easy_phys_updatePosAndVel(&gameState->camera->pos, &gameState->camera->dP, camForce, dt, 0.6f);
 #else
                 float camDistFromPlayer = getLengthV3(relPos); 
                 if(camDistFromPlayer > distanceFromLayer) {
@@ -864,7 +863,7 @@ int main(int argc, char *args[]) {
                         theta += 4*dt;
                         posAt.y += 0.1f*sin(theta);
                         posAt.z += 0.01;
-                        RenderInfo renderInfo = calculateRenderInfo(posAt, v3(0.5f, 0.5f, 0), gameState->camera.pos, metresToPixels);
+                        RenderInfo renderInfo = calculateRenderInfo(posAt, v3(0.5f, 0.5f, 0), gameState->camera->pos, metresToPixels);
                         openGlTextureCentreDim(getTextureAsset(enterKeyTex)->id, renderInfo.pos, renderInfo.dim.xy, COLOR_WHITE, 0, mat4(), 1, projectionMatrixToScreen(bufferWidth, bufferHeight));
                     }
                 } else {
@@ -1136,7 +1135,7 @@ int main(int argc, char *args[]) {
 
 
                 //Render positions we send to the GPU. Basically the positions in pixels offset from the center of the screen
-                V3 renderPos = v3_minus(v3_plus(ent->pos, ent->renderPosOffset), gameState->camera.pos);
+                V3 renderPos = v3_minus(v3_plus(ent->pos, ent->renderPosOffset), gameState->camera->pos);
                 renderPos = transformPositionV3(renderPos, metresToPixels);
                 //
                 V3 renderDim = transformPositionV3(v3_hadamard(ent->dim, ent->renderScale), metresToPixels);
@@ -1241,7 +1240,7 @@ int main(int argc, char *args[]) {
         for(int entIndex = 0; entIndex < gameState->commons.count; entIndex++) {
             Entity_Commons *ent = (Entity_Commons *)getElement(&gameState->commons, entIndex);
             if(ent && isFlagSet(ent, ENTITY_VALID) && !isFlagSet(ent, ENTITY_CAMERA)) {
-                drawAndUpdateParticleSystem(&ent->particleSystem, dt, ent->pos, v3(0, 0, 0), gameState->camera.pos, metresToPixels);
+                drawAndUpdateParticleSystem(&ent->particleSystem, dt, ent->pos, v3(0, 0, 0), gameState->camera->pos, metresToPixels);
             }
         }
         ////////////
@@ -1252,7 +1251,7 @@ int main(int argc, char *args[]) {
                 if(hotEnt.e) {
                     interacting = hotEnt;
 
-                    V3 screenSpaceP = v3_minus(interacting.e->pos, gameState->camera.pos);
+                    V3 screenSpaceP = v3_minus(interacting.e->pos, gameState->camera->pos);
                     screenSpaceP = transformPositionV3(screenSpaceP, metresToPixels);
                     //screenSpaceP.xy = v2_plus(screenSpaceP.xy, middleP);
 
@@ -1267,7 +1266,7 @@ int main(int argc, char *args[]) {
                 }
             }
 
-            V2 mouseP_worldSpace = v2_plus(v2_scale(1 / ratio, v2_minus(v2_plus(mouseP_yUp, gameState->mouseOffset), middleP)), gameState->camera.pos.xy);
+            V2 mouseP_worldSpace = v2_plus(v2_scale(1 / ratio, v2_minus(v2_plus(mouseP_yUp, gameState->mouseOffset), middleP)), gameState->camera->pos.xy);
 
             if(wasPressed(gameButtons, BUTTON_LEFT_MOUSE)) {
                 gameState->interactStartingMouseP = v2_scale(1 / ratio, mouseP_yUp);
@@ -1343,11 +1342,17 @@ int main(int argc, char *args[]) {
                                 } break;
                                 case ENTITY_TYPE_NPC: {
                                     NPC *newEnt = (NPC *)getEmptyElement(&gameState->npcEntities);
-                                    initNPCEnt(gameState, &gameState->commons, &gameState->events, newEnt, initPos, doorTex, 1, gameState->ID++);
+                                    initNPCEnt(&gameState->commons, &gameState->events, newEnt, initPos, doorTex, 1, gameState->ID++, gameState->eventID++);
                                     addDialog(newEnt->event, (char *)"Light is the sound of nature, sound is the light of our world.\n");
                                     addDialog(newEnt->event, (char *)"The garden needs your help. You need to listen\n");
 
-                                    newEnt->event->nextEvent = addV3PanEventWithOffset(&gameState->events, SMOOTH_STEP_00, EVENT_NULL_FLAG, gameState->camera, v3(2, 10, 0), 3, gameState->eventID++);
+                                    Entity_Commons *com = gameState->camera;
+                                    
+                                    Event_EntCommonsInfo evComInfo = {};
+                                    evComInfo.id = com->ID;
+                                    evComInfo.pos = &com->pos;
+
+                                    newEnt->event->nextEvent = addV3PanEventWithOffset(&gameState->events, SMOOTH_STEP_00, EVENT_NULL_FLAG, v3(2, 10, 0), 3, &evComInfo, gameState->eventID++);
                                     newEnt->e->renderScale.x = newEnt->e->renderScale.y = 2;
                                     newEnt->e->renderPosOffset.y = 0.3f;
                                     newEnt->e->animationParent = findAsset((char *)"chubby man animation");
@@ -1359,7 +1364,7 @@ int main(int argc, char *args[]) {
                                 }
                             }
                         }
-                        interacting.e = &gameState->camera;
+                        interacting.e = gameState->camera;
                         interacting.type = GRAB_CAMERA;
                         beginUndoMove(&gameState->undoBuffer, interacting.e, interacting.e->pos);
                     }
@@ -1378,7 +1383,7 @@ int main(int argc, char *args[]) {
                             float zAt = gameState->camera->pos.z - interacting.e->pos.z;
                             V2 newPos = v2_minus(mouseP_worldSpace, gameState->camera->pos.xy);
                             newPos = v2(newPos.x*zAt, newPos.y*zAt);
-                            newPos = v2_plus(newPos, gameState->camera.pos.xy);
+                            newPos = v2_plus(newPos, gameState->camera->pos.xy);
                             interacting.e->pos.xy = newPos;
 
                         }
@@ -1618,7 +1623,7 @@ int main(int argc, char *args[]) {
 
                 ImGui::Begin("General");
                 //ImGui::InputFloat3("Camera position", gameState->camera.pos.E);           
-                ImGui::SliderFloat("Camera Z Pos", &gameState->camera.pos.z, min(-10, gameState->camera.pos.z), max(10, gameState->camera.pos.z));            
+                ImGui::SliderFloat("Camera Z Pos", &gameState->camera->pos.z, min(-10, gameState->camera->pos.z), max(10, gameState->camera->pos.z));            
                 
                 initEntityZPos = roundToHalf(initEntityZPos);
                 ImGui::SliderFloat("Init Entity Pos", &initEntityZPos, -1, -10);            

@@ -1,0 +1,12 @@
+Event: {
+	ID: 1;
+	type: "EVENT_V3_PAN";
+	entId: 2;
+	dim: 0.000000 0.000000 0.000000;
+	flags: 4;
+	lerpType: "SMOOTH_STEP_00";
+	lerpB: 2.000000 10.000000 0.000000;
+	lerpEntId: 2;
+	lerpTimerPeriod: 3.000000;
+
+}

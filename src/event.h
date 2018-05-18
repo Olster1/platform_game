@@ -1,3 +1,5 @@
+typedef struct Asset Asset;
+
 #define EVENT_TYPE(FUNC) \
 FUNC(EVENT_DIALOG) \
 FUNC(EVENT_V3_PAN) \
@@ -48,7 +50,7 @@ typedef struct Event {
 Event *findEventFromID(Array_Dynamic *events, int id) {
 	Event *result = 0;
 	for(int entIndex = 0; entIndex < events->count; entIndex++) {
-	    Event *event = (Entity_Commons *)getElement(events, entIndex);
+	    Event *event = (Event *)getElement(events, entIndex);
 	    if(event) {
 	    	if(event->ID == id) {
 	    		result = event;
@@ -76,13 +78,18 @@ void setupEmptyEvent(Event *event) {
 	setEventFlag(event, EVENT_FRESH);
 }
 
-Event *addDialogEvent(Array_Dynamic *events, Entity_Commons *ent, V3 bounds, unsigned long flags, int id) {
+typedef struct {
+	int id;
+	V3 *pos;
+} Event_EntCommonsInfo;
+
+Event *addDialogEvent(Array_Dynamic *events, Event_EntCommonsInfo *commonInfo, V3 bounds, unsigned long flags, int id) {
 	Event *event = (Event *)getEmptyElement(events);
 	memset(event, 0, sizeof(Event));
 	event->ID = id;
 	event->type = EVENT_DIALOG;
-	event->entId = ent->ID;
-	event->pos = &ent->pos;
+	event->entId = commonInfo->id;
+	event->pos = commonInfo->pos;
 	event->dim = bounds;
 	event->dialogTimer = initTimer(2);
 	event->dialogDisplayValue = 0.3f;
@@ -96,21 +103,21 @@ void renewPanEventV3(Event *event) {
 	setLerpInfoV3_s(&event->lerpValueV3, event->lerpValueV3.b, event->lerpValueV3.timer.period, event->lerpValueV3.val);
 }
 
-Event *addV3PanEvent(Array_Dynamic *events, LerpType lerpType, EventFlag flags, Entity_Commons *ent, V3 targetPos, float timeSpan, int id) {
+Event *addV3PanEvent(Array_Dynamic *events, LerpType lerpType, EventFlag flags, V3 targetPos, float timeSpan, Event_EntCommonsInfo *ent, int id) {
 	Event *event = (Event *)getEmptyElement(events);
 	memset(event, 0, sizeof(Event));
 	event->ID = id;
-	event->entId = ent->ID;
+	event->entId = ent->id;
 	event->type = EVENT_V3_PAN;
 	event->lerpType = lerpType;
 	event->flags |= flags;
 	setEventFlag(event, EVENT_FRESH);
-	setLerpInfoV3_s(&event->lerpValueV3, targetPos, timeSpan, &ent->pos);
+	setLerpInfoV3_s(&event->lerpValueV3, targetPos, timeSpan, ent->pos);
 	return event;
 }
 
-Event *addV3PanEventWithOffset(Array_Dynamic *events, LerpType lerpType, EventFlag flags, Entity_Commons *ent, V3 offsetPos, float timeSpan, int id) { 
-	Event *result = addV3PanEvent(events, lerpType, flags, ent, v3_plus(ent->pos, offsetPos), timeSpan, id);
+Event *addV3PanEventWithOffset(Array_Dynamic *events, LerpType lerpType, EventFlag flags, V3 offsetPos, float timeSpan, Event_EntCommonsInfo *ent, int id) { 
+	Event *result = addV3PanEvent(events, lerpType, flags, v3_plus(*ent->pos, offsetPos), timeSpan, ent, id);
 	return result;
 }
 

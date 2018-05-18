@@ -1,18 +1,16 @@
-Door: {
-	partnerID: 3;
+Camera: {
 
 }
 Commons: {
 	id: 2;
-	name: "(null)";
-	flags: 177;
-	type: "ENT_TYPE_DEFAULT";
-	position: 4.650000 2.283334 -1.000000;
+	name: "camera";
+	flags: 433;
+	type: "ENT_TYPE_NULL";
+	position: 0.000000 0.000000 0.000000;
 	renderPosOffset: 0.000000 0.000000 0.000000;
 	dim: 1.000000 1.000000 1.000000;
 	renderScale: 1.000000 1.000000 1.000000;
 	shading: 1.000000 1.000000 1.000000 1.000000;
-	texture: "door1.png";
 	inverseWeight: 0.000000;
 
 }

@@ -1,12 +1,13 @@
 NPC: {
+	eventID: 0;
 
 }
 Commons: {
-	id: 4;
+	id: 5;
 	name: "(null)";
 	flags: 121;
 	type: "ENT_TYPE_DEFAULT";
-	position: -1.300000 2.001000 -1.000000;
+	position: -1.850000 2.001000 -1.000000;
 	renderPosOffset: 0.000000 0.300000 0.000000;
 	dim: 1.000000 1.000000 1.000000;
 	renderScale: 2.000000 2.000000 1.000000;
