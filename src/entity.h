@@ -1,3 +1,17 @@
+typedef enum {
+    ENTITY_TYPE_INVALID,
+    ENTITY_TYPE_NPC,
+    ENTITY_TYPE_NOTE_PARENT,
+    ENTITY_TYPE_NOTE,
+    ENTITY_TYPE_ENTITY, 
+    ENTITY_TYPE_COLLISION,
+    ENTITY_TYPE_DOOR,
+    ENTITY_TYPE_PLATFORM,
+    ENTITY_TYPE_COMMONS,
+    ENTITY_TYPE_SCENARIO,
+    ENTITY_TYPE_EVENT,
+    ENTITY_TYPE_CAMERA
+} EntType;
 
 //IMPORTANT: The order of these matters. They are used in preferece for the collision detection
 #define ENTITY_TYPE(FUNC) \
@@ -16,7 +30,8 @@ static char *EntityTypeStrings[] = { ENTITY_TYPE(STRING) };
 #define PLATFORM_TYPE(FUNC) \
 FUNC(PLATFORM_NULL) \
 FUNC(PLATFORM_CIRCLE) \
-FUNC(PLATFORM_LINEAR) \
+FUNC(PLATFORM_LINEAR_X) \
+FUNC(PLATFORM_LINEAR_Y) \
 FUNC(PLATFORM_FIGURE_OF_EIGHT) \
 
 typedef enum {
@@ -30,6 +45,7 @@ typedef struct {
 
 	char *name;
 	
+	EntType entType; //this is the actual type; 
 	EntityType type;
 	unsigned long flags;
 	V3 renderPosOffset; //position offset for rendering 
@@ -216,15 +232,16 @@ Entity_Commons *findEntityFromID(Array_Dynamic *ents, int id) {
 }
 
 //This is for just setting up things in the game that aren't unique and therefore not saved. 
-void setupEntityCommons(Entity_Commons *common, void *entParent) {
+void setupEntityCommons(Entity_Commons *common, void *entParent, EntType entType) {
 	particle_system_settings particleSet = InitParticlesSettings(PARTICLE_SYS_DEFAULT);
 	pushParticleBitmap(&particleSet, &globalFireTex_debug);
 	InitParticleSystem(&common->particleSystem, &particleSet, 12);
 	common->AnimationListSentintel.Next = common->AnimationListSentintel.Prev = &common->AnimationListSentintel; 
 	common->parent = entParent;
+	common->entType = entType;
 }
 
-Entity_Commons *initEntityCommons(void *entParent, Array_Dynamic *commons_, V3 pos, Asset *tex, float inverseWeight, int ID) {
+Entity_Commons *initEntityCommons(void *entParent, Array_Dynamic *commons_, V3 pos, Asset *tex, float inverseWeight, int ID, EntType entType) {
 	Entity_Commons *common = (Entity_Commons *)getEmptyElement(commons_);
 	memset(common, 0, sizeof(Entity_Commons));
 
@@ -250,7 +267,7 @@ Entity_Commons *initEntityCommons(void *entParent, Array_Dynamic *commons_, V3 p
 
 	common->inverseWeight = inverseWeight;
     	
-    setupEntityCommons(common, entParent);
+    setupEntityCommons(common, entParent, entType);
 
 	return common;
 }
@@ -258,13 +275,13 @@ Entity_Commons *initEntityCommons(void *entParent, Array_Dynamic *commons_, V3 p
 void setupEnt(Entity *entity, Entity_Commons *common) {
 	if(common) {
 		entity->e = common;
-		setupEntityCommons(common, entity);
+		setupEntityCommons(common, entity, ENTITY_TYPE_ENTITY);
 	}
 }
 
 void initEntity(Array_Dynamic *commons_, Entity *entity, V3 pos, Asset *tex, float inverseWeight, int ID) {
 	memset(entity, 0, sizeof(Entity)); //clear entity to null
-	entity->e = initEntityCommons(entity, commons_, pos, tex, inverseWeight, ID);
+	entity->e = initEntityCommons(entity, commons_, pos, tex, inverseWeight, ID, ENTITY_TYPE_ENTITY);
 	entity->e->type = ENT_TYPE_DEFAULT;
 	setFlag(entity->e, ENTITY_ANIMATED);
 
@@ -274,13 +291,13 @@ void initEntity(Array_Dynamic *commons_, Entity *entity, V3 pos, Asset *tex, flo
 void setupCollisionEnt(Collision_Object *entity, Entity_Commons *common) {
 	if(common) {
 		entity->e = common;
-		setupEntityCommons(common, entity);
+		setupEntityCommons(common, entity, ENTITY_TYPE_COLLISION);
 	}
 }
 
 void initCollisionEnt(Array_Dynamic *commons_, Collision_Object *entity, V3 pos, Asset *tex, float inverseWeight, int ID) {
 	memset(entity, 0, sizeof(Collision_Object)); //clear entity to null
-	entity->e = initEntityCommons(entity, commons_, pos, tex, inverseWeight, ID);
+	entity->e = initEntityCommons(entity, commons_, pos, tex, inverseWeight, ID, ENTITY_TYPE_COLLISION);
 	entity->e->dim.x = 4;
 	setFlag(entity->e, ENTITY_COLLISION);
 	entity->e->type = ENT_TYPE_WORLD_COLLISION;
@@ -291,17 +308,17 @@ void initCollisionEnt(Array_Dynamic *commons_, Collision_Object *entity, V3 pos,
 void setupPlatformEnt(Entity *entity, Entity_Commons *common) {
 	if(common) {
 		entity->e = common;
-		setupEntityCommons(common, entity);
+		setupEntityCommons(common, entity, ENTITY_TYPE_PLATFORM);
 	}
 }
 
-void initPlatformEnt(Array_Dynamic *commons_, Entity *entity, V3 pos, Asset *tex, int ID) {
+void initPlatformEnt(Array_Dynamic *commons_, Entity *entity, V3 pos, Asset *tex, int ID, PlatformType platformType) {
 	memset(entity, 0, sizeof(Entity)); //clear entity to null
-	entity->e = initEntityCommons(entity, commons_, pos, tex, 1 / 10000, ID); //the platforms do have a mass but aren't affected by gravity
+	entity->e = initEntityCommons(entity, commons_, pos, tex, 0.0001, ID, ENTITY_TYPE_PLATFORM); //the platforms do have a mass but aren't affected by gravity
 	entity->e->type = ENT_TYPE_DEFAULT;
 	entity->e->dim.x = 4;
 	entity->e->type = ENT_TYPE_PLATFORM;
-	entity->platformType = PLATFORM_LINEAR;
+	entity->platformType = platformType;
 	entity->e->centerPoint = pos;
 	unSetFlag(entity->e, ENTITY_GRAVITY_AFFECTED);
 
@@ -311,13 +328,13 @@ void initPlatformEnt(Array_Dynamic *commons_, Entity *entity, V3 pos, Asset *tex
 void setupDoorEnt(Door *entity, Entity_Commons *common) {
 	if(common) {
 		entity->e = common;
-		setupEntityCommons(common, entity);
+		setupEntityCommons(common, entity, ENTITY_TYPE_DOOR);
 	}
 }
 
 void initDoorEnt(Array_Dynamic *commons_, Door *entity, V3 pos, Asset *tex, int ID) {
 	memset(entity, 0, sizeof(Door)); //clear entity to null
-	entity->e = initEntityCommons(entity, commons_, pos, tex, 0, ID);
+	entity->e = initEntityCommons(entity, commons_, pos, tex, 0, ID, ENTITY_TYPE_DOOR);
 	entity->e->type = ENT_TYPE_DEFAULT;
 	unSetFlag(entity->e, ENTITY_COLLIDES);
 
@@ -327,13 +344,13 @@ void initDoorEnt(Array_Dynamic *commons_, Door *entity, V3 pos, Asset *tex, int 
 void setupScenarioEnt(Entity *entity, Entity_Commons *common) {
 	if(common) {
 		entity->e = common;
-		setupEntityCommons(common, entity);
+		setupEntityCommons(common, entity, ENTITY_TYPE_SCENARIO);
 	}
 }
 
 void initScenarioEnt(Array_Dynamic *commons_, Entity *entity, V3 pos, Asset *tex, int ID) {
 	memset(entity, 0, sizeof(Entity)); //clear entity to null
-	entity->e = initEntityCommons(entity, commons_, pos, tex, 0, ID);
+	entity->e = initEntityCommons(entity, commons_, pos, tex, 0, ID, ENTITY_TYPE_SCENARIO);
 	entity->e->type = ENT_TYPE_DEFAULT;
 	unSetFlag(entity->e, ENTITY_COLLIDES);
 	setupScenarioEnt(entity, 0);
@@ -342,14 +359,14 @@ void initScenarioEnt(Array_Dynamic *commons_, Entity *entity, V3 pos, Asset *tex
 void setupNoteEnt(Note *entity, Entity_Commons *common) {
 	if(common) {
 		entity->e = common;
-		setupEntityCommons(common, entity);
+		setupEntityCommons(common, entity, ENTITY_TYPE_NOTE);
 	}
 	entity->swayTimer = initTimer(0.7f);
 }
 
 void initNoteEnt(Array_Dynamic *commons_, Note *entity, V3 pos, Asset *tex, Asset *sound, int ID) {
 	memset(entity, 0, sizeof(Note)); //clear entity to null
-	entity->e = initEntityCommons(entity, commons_, pos, tex, 0, ID);
+	entity->e = initEntityCommons(entity, commons_, pos, tex, 0, ID, ENTITY_TYPE_NOTE);
 	entity->e->type = ENT_TYPE_DEFAULT;
 	entity->sound = sound;
 	assert(sound);
@@ -360,7 +377,7 @@ void initNoteEnt(Array_Dynamic *commons_, Note *entity, V3 pos, Asset *tex, Asse
 void setupNoteParent(NoteParent *entity, Entity_Commons *common) {
 	if(common) {
 		entity->e = common;
-		setupEntityCommons(common, entity);
+		setupEntityCommons(common, entity, ENTITY_TYPE_NOTE_PARENT);
 	}
 
 	initArray(&entity->values, NoteValue);
@@ -372,7 +389,7 @@ void setupNoteParent(NoteParent *entity, Entity_Commons *common) {
 
 void initNoteParentEnt(Array_Dynamic *commons_, NoteParent *entity, V3 pos, Asset *tex, int ID) {
 	memset(entity, 0, sizeof(NoteParent)); //clear entity to null
-	entity->e = initEntityCommons(entity, commons_, pos, tex, 0, ID);
+	entity->e = initEntityCommons(entity, commons_, pos, tex, 0, ID, ENTITY_TYPE_NOTE_PARENT);
 	entity->e->type = ENT_TYPE_DEFAULT;
 	unSetFlag(entity->e, ENTITY_COLLIDES);
 
@@ -388,7 +405,7 @@ void addDialog(Event *event, char *dialog) {
 void setupNPCEnt(NPC *entity, Entity_Commons *common) {
 	if(common) {
 		entity->e = common;
-		setupEntityCommons(common, entity);
+		setupEntityCommons(common, entity, ENTITY_TYPE_NPC);
 	}
 	
 	entity->stateTimer = initTimer(1);
@@ -397,7 +414,7 @@ void setupNPCEnt(NPC *entity, Entity_Commons *common) {
 
 void initNPCEnt(Array_Dynamic *commons_, Array_Dynamic *events, NPC *entity, V3 pos, Asset *tex, float inverseWeight, int ID, int eventId) {
 	memset(entity, 0, sizeof(NPC)); //clear entity to null
-	entity->e = initEntityCommons(entity, commons_, pos, tex, inverseWeight, ID);
+	entity->e = initEntityCommons(entity, commons_, pos, tex, inverseWeight, ID, ENTITY_TYPE_NPC);
 	entity->e->type = ENT_TYPE_DEFAULT;
 	setFlag(entity->e, ENTITY_ANIMATED);
 	unSetFlag(entity->e, ENTITY_COLLIDES_WITH_PLAYER);

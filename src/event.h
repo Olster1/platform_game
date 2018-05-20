@@ -3,6 +3,7 @@ typedef struct Asset Asset;
 #define EVENT_TYPE(FUNC) \
 FUNC(EVENT_DIALOG) \
 FUNC(EVENT_V3_PAN) \
+FUNC(EVENT_ENTITY_ACTIVE) \
 
 typedef enum {
 	EVENT_TYPE(ENUM)
@@ -22,6 +23,8 @@ typedef struct Event {
 	int ID;
 
 	int entId;
+
+	char name[256];
 
 	EventType type;
 	V3 *pos;

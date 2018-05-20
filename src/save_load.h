@@ -1,19 +1,3 @@
-typedef enum {
-    ENTITY_TYPE_INVALID,
-    ENTITY_TYPE_NPC,
-    ENTITY_TYPE_NOTE_PARENT,
-    ENTITY_TYPE_NOTE,
-    ENTITY_TYPE_ENTITY, 
-    ENTITY_TYPE_COLLISION,
-    ENTITY_TYPE_DOOR,
-    ENTITY_TYPE_PLATFORM,
-    ENTITY_TYPE_COMMONS,
-    ENTITY_TYPE_SCENARIO,
-    ENTITY_TYPE_EVENT,
-    ENTITY_TYPE_CAMERA
-} EntType;
-
-
 #define clearAndInitArray(arrayPtr, type, clear) if(clear) { freeArray(arrayPtr); } initArray(arrayPtr, type);
 
 void initWorldDataArrays(GameState *gameState, bool clearArrays) {
@@ -144,6 +128,8 @@ void outputCommonData(InfiniteAlloc *mem, Entity_Commons *ent) {
     addVar(mem, typeString, "type", VAR_CHAR_STAR);
 
     addVar(mem, ent->pos.E, "position", VAR_V3);
+    addVar(mem, ent->dP.E, "velocity", VAR_V3);
+
     addVar(mem, ent->renderPosOffset.E, "renderPosOffset", VAR_V3);
     addVar(mem, ent->dim.E, "dim", VAR_V3);
     addVar(mem, ent->renderScale.E, "renderScale", VAR_V3);
@@ -153,6 +139,7 @@ void outputCommonData(InfiniteAlloc *mem, Entity_Commons *ent) {
         addVar(mem, ent->tex->name, "texture", VAR_CHAR_STAR);
     }
     addVar(mem, &ent->inverseWeight, "inverseWeight", VAR_FLOAT);
+    addVar(mem, &ent->angle, "angle", VAR_FLOAT);
 
     if(ent->animationParent) {
         addVar(mem, ent->animationParent->name, "animation", VAR_CHAR_STAR);
@@ -325,6 +312,7 @@ void saveWorld(GameState *gameState, char *dir, char *fileName) {
             beginDataType(&fileData.mem, "Event");
             addVar(&fileData.mem, &ent->ID, "ID", VAR_INT);
             addVar(&fileData.mem, EventTypeStrings[ent->type], "type", VAR_CHAR_STAR);
+            addVar(&fileData.mem, ent->name, "name", VAR_CHAR_STAR);
             addVar(&fileData.mem, &ent->entId, "entId", VAR_INT);
             addVar(&fileData.mem, ent->dim.E, "dim", VAR_V3);
             addVar(&fileData.mem, &ent->flags, "flags", VAR_LONG_INT);
@@ -580,6 +568,7 @@ void loadWorld(GameState *gameState, char *dir) {
     initWorldDataArrays(gameState, true);
 
     int maxId = 0;
+    int maxEventId = 0;
 
     for(int fileIndex = 0; fileIndex < fileNames.count; ++fileIndex) {
         char *name = fileNames.names[fileIndex];
@@ -661,12 +650,17 @@ void loadWorld(GameState *gameState, char *dir) {
                     if(entData.type == ENTITY_TYPE_EVENT) {
                         if(stringsMatchNullN("ID", token.at, token.size)) {
                             entData.event->ID = getIntFromDataObjects(&data, &tokenizer);
+                            maxEventId = max(entData.event->ID, maxEventId);
                         }
                         if(stringsMatchNullN("type", token.at, token.size)) {
                             char *name = getStringFromDataObjects(&data, &tokenizer);
                             int typeAsInt = findEnumValue(name, EventTypeStrings, arrayCount(EventTypeStrings));
                             assert(typeAsInt >= 0);
                             entData.event->type = (EventType)typeAsInt;
+                        }
+                        if(stringsMatchNullN("name", token.at, token.size)) {
+                            char *string = getStringFromDataObjects(&data, &tokenizer);
+                            nullTerminateBuffer(entData.event->name, string, strlen(string));
                         }
                         if(stringsMatchNullN("dim", token.at, token.size)) {
                             entData.event->dim = buildV3FromDataObjects(&data, &tokenizer);
@@ -879,6 +873,9 @@ void loadWorld(GameState *gameState, char *dir) {
                         if(stringsMatchNullN("position", token.at, token.size))  {
                             entData.commons->pos = buildV3FromDataObjects(&data, &tokenizer);
                         }
+                        if(stringsMatchNullN("velocity", token.at, token.size))  {
+                            entData.commons->dP = buildV3FromDataObjects(&data, &tokenizer);
+                        }
                         if(stringsMatchNullN("renderPosOffset", token.at, token.size))  {
                             entData.commons->renderPosOffset = buildV3FromDataObjects(&data, &tokenizer);
                         }
@@ -970,6 +967,7 @@ void loadWorld(GameState *gameState, char *dir) {
     }   
 
     gameState->ID = maxId + 1;
+    gameState->eventID = maxEventId + 1;
 
     assert(gameState->player);
     assert(gameState->camera);

@@ -20,6 +20,8 @@
 
 #include "easy.h"
 
+static int testInt = 0;
+
 static char* globalExeBasePath;
 static Arena arena;
 
@@ -130,6 +132,11 @@ CastRayInfo castRayAgainstWorld(GameState *gameState, Entity_Commons *ent, V2 ra
         }
     }
     return result;
+}
+
+void pushCurrentEvent(Event *event, Event **currentEvent) {
+    *currentEvent = event;
+    setEventFlag(*currentEvent, EVENT_FRESH);
 }
 
 V2 transformWorldPToScreenP(V2 inputA, float zPos, float width, float height, V2 middleP) {
@@ -272,10 +279,14 @@ int main(int argc, char *args[]) {
         Asset *backgroundSound = loadSoundAsset((concat(globalExeBasePath,(char *)"Cave and Wind.wav")), &audioSpec);
         Asset *backgroundMusic = loadSoundAsset((concat(globalExeBasePath,(char *)"Chill.wav")), &audioSpec);
         Asset *backgroundMusic2 = loadSoundAsset((concat(globalExeBasePath,(char *)"Chill Major.wav")), &audioSpec);
+        Asset *backgroundMusic3 = loadSoundAsset((concat(globalExeBasePath,(char *)"c_pad.wav")), &audioSpec);
         
-        PlayingSound *firstSound = playSound(&arena, getSoundAsset(backgroundMusic), 0);
-        PlayingSound *secondSound = pushSound(&arena, getSoundAsset(backgroundMusic2), secondSound);
-        firstSound->nextSound = secondSound;
+        PlayingSound *firstSound = playSound(&arena, getSoundAsset(backgroundMusic3), 0);
+        firstSound->nextSound = firstSound;
+
+        // PlayingSound *secondSound = pushSound(&arena, getSoundAsset(backgroundMusic2), secondSound);
+        // firstSound->nextSound = secondSound;
+        // secondSound->nextSound = firstSound;
         
         // playSound(&arena, &backgroundSound, true);
         
@@ -301,31 +312,35 @@ int main(int argc, char *args[]) {
         char *imgFileTypes[] = {"jpg", "jpeg", "png", "bmp"};
         FileNameOfType fileNames = getDirectoryFilesOfType(concat(globalExeBasePath, (char *)"img/"), imgFileTypes, arrayCount(imgFileTypes));
 
-        const char* listbox_items[64];
-        int listBoxCount = 0;
+        const char* texNames[64];
+        const char* texNamesFull[64];
+        int texCount = 0;
 
         for(int i = 0; i < fileNames.count; ++i) {
-            char *name = fileNames.names[i];
-            char *shortName = getFileLastPortion(name);
-            listbox_items[listBoxCount++] = shortName;
+            char *fullName = fileNames.names[i];
+            char *shortName = getFileLastPortion(fullName);
+            int indexAt = texCount++;
+            texNames[indexAt] = shortName;
+            //texNamesFull[indexAt] = fullName;
             Asset *asset = findAsset(shortName);
             assert(!asset);
             if(!asset) {
-                //asset = loadImageAsset(shortName);
+                asset = loadImageAsset(fullName);
             }
-            free(name);
+            free(fullName);
         }
 
-        Asset *doorTex = loadImageAsset(concat(globalExeBasePath, (char *)"img/door1.png"));
-        Asset *skyTex = loadImageAsset(concat(globalExeBasePath, (char *)"img/bg3.jpg"));
-        Asset *scrollTex = loadImageAsset(concat(globalExeBasePath, (char *)"img/scrollTexture2.jpg"));
-        Asset *blockTex = loadImageAsset(concat(globalExeBasePath, (char *)"img/moss_block1.bmp"));
-        Asset *noteTex = loadImageAsset(concat(globalExeBasePath, (char *)"img/MusicalNote.png"));
-        Asset *stevinusTex = loadImageAsset(concat(globalExeBasePath, (char *)"img/stevinus.png"));
-        Asset *flora1Tex = loadImageAsset(concat(globalExeBasePath, (char *)"img/flora1.png"));
-        Asset *flora2Tex = loadImageAsset(concat(globalExeBasePath, (char *)"img/flora2.png"));
-        Asset *flora3Tex = loadImageAsset(concat(globalExeBasePath, (char *)"img/flora3.png"));
-        Asset *enterKeyTex = loadImageAsset(concat(globalExeBasePath, (char *)"img/enter_key.png"));
+        Asset *doorTex = findAsset("door1.png");
+        Asset *skyTex = findAsset("sky_background.png");
+        Asset *scrollTex = findAsset("scrollTexture2.jpg");
+        Asset *blockTex = findAsset("moss_block1.bmp");
+        Asset *noteTex = findAsset("MusicalNote.png");
+        Asset *stevinusTex = findAsset("stevinus.png");
+        Asset *flora1Tex = findAsset("flora1.png");
+        Asset *flora2Tex = findAsset("flora2.png");
+        Asset *flora3Tex = findAsset("flora3.png");
+        Asset *enterKeyTex = findAsset("enter_key.png");
+        Asset *crateTex = findAsset("crate.jpg");
 
         //TODO: change this to use an Asset type
         globalFireTex_debug = loadImage(concat(globalExeBasePath, (char *)"img/fire.png"));
@@ -346,7 +361,7 @@ int main(int argc, char *args[]) {
         assert(gameState->player->e->animationParent);
         AddAnimationToList(gameState, &gameState->longTermArena, gameState->player->e, FindAnimation(gameState->KnightAnimations.anim, gameState->KnightAnimations.count, (char *)"Knight_Idle"));
 
-        gameState->camera = initEntityCommons(0, &gameState->commons, v3(0, 0, 0), 0, 0, gameState->ID++);
+        gameState->camera = initEntityCommons(0, &gameState->commons, v3(0, 0, 0), 0, 0, gameState->ID++, ENTITY_TYPE_CAMERA);
         gameState->camera->pos.z = 0;
         setFlag(gameState->camera, ENTITY_CAMERA);
         unSetFlag(gameState->camera, ENTITY_COLLIDES);
@@ -391,8 +406,10 @@ int main(int argc, char *args[]) {
         unsigned int lastTime = SDL_GetTicks();
         
         bool running = true;
-        InteractItem interacting = {}; //get rid of this!
-        int entityType = 1;
+        InteractItem interacting = {}; 
+        int entityType = 1; //TODO: Maybe use actual types 
+
+        Entity_Commons *lastSelectedEnt = 0;
         
         ///IMGUI variables
         float xPower = 60;
@@ -400,8 +417,8 @@ int main(int argc, char *args[]) {
         float gravityPower = 80;
         bool gravityIsOn = true;
         float initWeight = 0;
-        PlatformType platformType = PLATFORM_LINEAR;
-        bool followPlayer = false;
+        PlatformType platformType = PLATFORM_LINEAR_X;
+        bool followPlayer = true;
         float distanceFromLayer = 0.4f;
 
 
@@ -409,21 +426,25 @@ int main(int argc, char *args[]) {
         bool MultiSample = true;
         float ReboundCoefficient = 0.4f;
         bool shadeColor = false;
-        bool debugUI_isOn = true;
+        bool debugUI_isOn = false;
         NoteValue noteType = C_NOTE;
         char noteBuf[32] = {};
         float initEntityZPos = -1;
 
         NoteParent *playingParentNote = 0;
-        NoteParent *lastPlayParentNote = 0;
         NoteParent *mostRecentParentNote = 0;
 
         Asset *currentTex = flora1Tex;
         
         Event *currentEvent = 0;
 
+        Event *selectedEvent = 0;
+
+        Timer lastNoteTimer = initTimer(0.5f);
+
         char *loadDir = concat(globalExeBasePath, "levels/");
         while(running) {
+            testInt = 0;
             //Save state of last frame game buttons 
             bool mouseWasDown = isDown(gameButtons, BUTTON_LEFT_MOUSE);
             bool mouseWasDownRight = isDown(gameButtons, BUTTON_RIGHT_MOUSE);
@@ -609,60 +630,68 @@ int main(int argc, char *args[]) {
             }
 
             V3 inputAccel = {};
-            if(currentEvent) {
-                Event *lastEvent = currentEvent;
-                switch(currentEvent->type) {
-                    case EVENT_V3_PAN: {             
-                        if(isEventFlagSet(currentEvent, EVENT_FRESH)) {           
-                            renewPanEventV3(currentEvent);
-                            assert(currentEvent->lerpValueV3.val);
-                            assert(currentEvent->lerpValueV3.val == &gameState->camera->pos);
-                            unSetEventFlag(currentEvent, EVENT_FRESH);
-                        }
-                        updateLerpV3(&currentEvent->lerpValueV3, dt, currentEvent->lerpType);
+            // for(int currentEvIndex = 0; currentEvIndex < currentEvents.count; ++currentEvIndex) {
+            //     Event *currentEvent = (Event *)getElement(&currentEvents, currentEvIndex);
+            //TODO: Move to array so there can be more than one current event at a time. 
+                if(currentEvent) {
+                    Event *lastEvent = currentEvent;
+                    switch(currentEvent->type) {
+                        case EVENT_V3_PAN: {             
+                            if(isEventFlagSet(currentEvent, EVENT_FRESH)) {           
+                                renewPanEventV3(currentEvent);
+                                assert(currentEvent->lerpValueV3.val);
+                                unSetEventFlag(currentEvent, EVENT_FRESH);
+                            }
+                            updateLerpV3(&currentEvent->lerpValueV3, dt, currentEvent->lerpType);
 
-                        if(!isOn(&currentEvent->lerpValueV3.timer)) {
-                            currentEvent = currentEvent->nextEvent;
-                        }
-                    } break;
-                    case EVENT_DIALOG: {
-                        if(isEventFlagSet(currentEvent, EVENT_FRESH)) {           
-                            //Don't need to do anything. 
-                        }
-                        if(wasPressed(gameButtons, BUTTON_UP)) {
-                            //TODO: Skip dialog
-                        }
-
-                        char *text = currentEvent->dialog[currentEvent->dialogAt];    
-                        TimerReturnInfo timeInfo = updateTimer(&currentEvent->dialogTimer, dt);
-                        
-                        assert(text);
-                        assert(currentEvent);
-                        float tValue = clamp01(timeInfo.canonicalVal / currentEvent->dialogDisplayValue);
-                        int stringCount = (int)lerp(0, tValue, strlen(text));
-                        
-                        float x = 0.2f*bufferWidth;
-                        float y = 0.7f*bufferHeight;
-                        float dimHeight = 0.3f*bufferHeight;
-                        
-                        outputTextWithLength(&mainFont, x, y, bufferWidth, bufferHeight, text, stringCount, rect2fMinMax(0.2f*bufferWidth, 0, 0.8f*bufferWidth, bufferHeight), COLOR_BLACK, 1, true);
-                        openGlDrawRectCenterDim(v3(0.5f*bufferWidth, y + 0.4f*dimHeight, -1), v2(bufferWidth, dimHeight), v4(0.6f, 0.6f, 0.6f, 0.6f), 0, mat4TopLeftToBottomLeft(bufferHeight), 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1));
-                        
-
-                        if(timeInfo.finished) {
-                            currentEvent->dialogAt++;
-                            if(currentEvent->dialogAt >= currentEvent->dialogCount) {
-                                currentEvent->dialogAt = 0;
+                            if(!isOn(&currentEvent->lerpValueV3.timer)) {
                                 currentEvent = currentEvent->nextEvent;
                             }
-                        }
-                    } break;
-                }
+                        } break;
+                        case EVENT_DIALOG: {
+                            if(isEventFlagSet(currentEvent, EVENT_FRESH)) {           
+                                //Don't need to do anything. 
+                            }
+                            if(wasPressed(gameButtons, BUTTON_UP)) {
+                                //TODO: Skip dialog
+                            }
 
-                if(lastEvent != currentEvent && currentEvent) {
-                    setEventFlag(currentEvent, EVENT_FRESH);   
+                            char *text = currentEvent->dialog[currentEvent->dialogAt];    
+                            TimerReturnInfo timeInfo = updateTimer(&currentEvent->dialogTimer, dt);
+                            
+                            assert(text);
+                            assert(currentEvent);
+                            float tValue = clamp01(timeInfo.canonicalVal / currentEvent->dialogDisplayValue);
+                            int stringCount = (int)lerp(0, tValue, strlen(text));
+                            
+                            float x = 0.2f*bufferWidth;
+                            float y = 0.7f*bufferHeight;
+                            float dimHeight = 0.3f*bufferHeight;
+                            
+                            outputTextWithLength(&mainFont, x, y, bufferWidth, bufferHeight, text, stringCount, rect2fMinMax(0.2f*bufferWidth, 0, 0.8f*bufferWidth, bufferHeight), COLOR_BLACK, 1, true);
+                            openGlDrawRectCenterDim(v3(0.5f*bufferWidth, y + 0.4f*dimHeight, -1), v2(bufferWidth, dimHeight), v4(0.6f, 0.6f, 0.6f, 0.6f), 0, mat4TopLeftToBottomLeft(bufferHeight), 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1));
+                            
+
+                            if(timeInfo.finished) {
+                                currentEvent->dialogAt++;
+                                if(currentEvent->dialogAt >= currentEvent->dialogCount) {
+                                    currentEvent->dialogAt = 0;
+                                    currentEvent = currentEvent->nextEvent;
+                                }
+                            }
+                        } break;
+                        case EVENT_ENTITY_ACTIVE: {
+                            Entity_Commons *ent = findEntityFromID(&gameState->commons, currentEvent->entId);
+                            setFlag(ent, ENTITY_ACTIVE);
+                            currentEvent = currentEvent->nextEvent;
+                        } break;
+                    }
+
+                    if(lastEvent != currentEvent && currentEvent) {
+                        setEventFlag(currentEvent, EVENT_FRESH);   
+                    }
                 }
-            } 
+            // } 
 
 
             if(!currentEvent){
@@ -724,9 +753,17 @@ int main(int argc, char *args[]) {
                 Entity *ent = (Entity *)getElement(&gameState->platformEnts, entIndex);
                 if(isFlagSet(ent->e, ENTITY_ACTIVE)) {
                     switch(ent->platformType) {
-                        case PLATFORM_LINEAR: {
+                        case PLATFORM_LINEAR_X: {
                             float dpLength = getLengthV3(ent->e->dP);
                             ent->e->ddP = v3_scale(10, normalize_V3(ent->e->dP, dpLength));
+                            ent->e->ddP.y = 0;
+                            ent->e->dP.y = 0;
+                        } break;
+                        case PLATFORM_LINEAR_Y: {
+                            float dpLength = getLengthV3(ent->e->dP);
+                            ent->e->ddP = v3_scale(10, normalize_V3(ent->e->dP, dpLength));
+                            ent->e->ddP.x = 0;
+                            ent->e->dP.x = 0;
                         } break;
                         case PLATFORM_CIRCLE: {
                             V3 relP = v3_minus(ent->e->pos, ent->centerPoint);
@@ -895,9 +932,11 @@ int main(int argc, char *args[]) {
             for(int entIndex = 0; entIndex < gameState->noteEnts.count; entIndex++) {
                 Note *ent = (Note *)getElement(&gameState->noteEnts, entIndex);
                 if(ent && isFlagSet(ent->e, ENTITY_VALID)) {
+                    //NOTE: This is just the wiggling
                     TimerReturnInfo timerInfo = updateTimer(&ent->swayTimer, dt);
                     float wiggleFactor = 0.2f;
                     ent->e->renderPosOffset.y = wiggleFactor*sin(TAU32*timerInfo.canonicalVal);
+                    //
                     
                     if(floatEqual_withError(ent->e->pos.z, gameState->player->e->pos.z)) { 
                         Rect2f entBounds = rect2fCenterDimV2(ent->e->pos.xy, ent->e->dim.xy);
@@ -907,7 +946,19 @@ int main(int argc, char *args[]) {
                     }
                 }
             }
-            if(note && note != gameState->player->lastNote) {
+            Timer lastNoteTimer = {};
+
+            if(isOn(&lastNoteTimer)) {
+                TimerReturnInfo timeInfo = updateTimer(&lastNoteTimer, dt);    
+                if(timeInfo.finished) {
+                    turnTimerOff(&lastNoteTimer);
+                }
+            }
+
+            if(note && note != gameState->player->lastNote && !isOn(&lastNoteTimer)) {
+                //this is so we don't double collide with notes
+                turnTimerOn(&lastNoteTimer);
+
                 assert(note->parent);
                 NoteParent *parent = note->parent;
                 int temp = addElement(&parent->values, note->value);
@@ -943,6 +994,11 @@ int main(int argc, char *args[]) {
                         assert(parent->values.count == 0);
                         playSound(&arena, getSoundAsset(solvedPuzzleSound), 0);
                         Reactivate(&parent->e->particleSystem);
+                        assert(!currentEvent);
+                        if(parent->eventToTrigger) {
+                            pushCurrentEvent(parent->eventToTrigger, &currentEvent);
+                            
+                        }
                         break;    
                     }    
                 }
@@ -1009,11 +1065,13 @@ int main(int argc, char *args[]) {
                     float dtValue = dt;// / loopCount;
                     for(int i = 0; i < loopCount; i++) {
                         isNanErrorV3(ent->dP);
-                        ent->pos = v3_plus(ent->pos, v3_plus(v3_scale(sqr(dtValue), force),  v3_scale(dtValue, ent->dP)));
-                        ent->dP = v3_plus(ent->dP, v3_minus(v3_scale(dtValue, force), v3_scale(dragFactor, ent->dP)));
+                        if(isFlagSet(ent, ENTITY_ACTIVE)) {
+                            ent->pos = v3_plus(ent->pos, v3_plus(v3_scale(sqr(dtValue), force),  v3_scale(dtValue, ent->dP)));
+                            ent->dP = v3_plus(ent->dP, v3_minus(v3_scale(dtValue, force), v3_scale(dragFactor, ent->dP)));
+                        }
                         isNanErrorV3(ent->pos);
                         isNanErrorV3(ent->dP);
-                        
+
                         //No angle forces as of yet. 
                         ent->angle = dtValue*ent->dA + ent->angle;
                         ent->dA = ent->dA - dragFactor*ent->dA;
@@ -1251,6 +1309,8 @@ int main(int argc, char *args[]) {
                 if(hotEnt.e) {
                     interacting = hotEnt;
 
+                    lastSelectedEnt = hotEnt.e;
+
                     V3 screenSpaceP = v3_minus(interacting.e->pos, gameState->camera->pos);
                     screenSpaceP = transformPositionV3(screenSpaceP, metresToPixels);
                     //screenSpaceP.xy = v2_plus(screenSpaceP.xy, middleP);
@@ -1259,6 +1319,10 @@ int main(int argc, char *args[]) {
 
                     //gameState->mouseOffset = v2_minus(screenSpaceP.xy, mouseP_yUp);                    
                     //TODO: Update mostRecentParentNote here. 
+                    if(interacting.e->entType == ENTITY_TYPE_NOTE_PARENT) {
+                        mostRecentParentNote = (NoteParent *)interacting.e->parent;    
+                    }
+                    
                     beginUndoMove(&gameState->undoBuffer, interacting.e, interacting.e->pos);
                 } else {
                     interacting.e = 0; //stop interacting
@@ -1280,7 +1344,7 @@ int main(int argc, char *args[]) {
                             switch((EntType)entityType) {
                                 case ENTITY_TYPE_ENTITY: {
                                     Entity *newEnt = (Entity *)getEmptyElement(&gameState->entities);
-                                    initEntity(&gameState->commons, newEnt, initPos, doorTex, 1, gameState->ID++);
+                                    initEntity(&gameState->commons, newEnt, initPos, crateTex, 1, gameState->ID++);
                                     addToUndoBufferIndex(&gameState->undoBuffer, CREATE_ENTITY, newEnt->e);
                                 } break;
                                 case ENTITY_TYPE_COLLISION: {
@@ -1302,10 +1366,8 @@ int main(int argc, char *args[]) {
                                 } break;
                                 case ENTITY_TYPE_PLATFORM: {
                                     Entity *newEnt = (Entity *)getEmptyElement(&gameState->platformEnts);
-                                    initPlatformEnt(&gameState->commons, newEnt, initPos, scrollTex, gameState->ID++);
+                                    initPlatformEnt(&gameState->commons, newEnt, initPos, blockTex, gameState->ID++, platformType);
                                     addToUndoBufferIndex(&gameState->undoBuffer, CREATE_ENTITY, newEnt->e);
-                                    newEnt->platformType = platformType;
-                                    
                                 } break;
                                 case ENTITY_TYPE_NOTE: {
                                     Note *newEnt = (Note *)getEmptyElement(&gameState->noteEnts);
@@ -1330,6 +1392,14 @@ int main(int argc, char *args[]) {
                                             newEnt->sequence[newEnt->noteValueCount++] = (NoteValue)value;
                                         }
                                         at++;
+                                    }
+
+                                    if(selectedEvent) {
+                                        // Event_EntCommonsInfo evComInfo = {};
+                                        // evComInfo.id = com->ID;
+                                        // evComInfo.pos = &com->pos;
+
+                                        newEnt->eventToTrigger = selectedEvent;//addV3PanEventWithOffset(&gameState->events, SMOOTH_STEP_01, EVENT_NULL_FLAG, v3(0.5f, 2, 0), 3, &evComInfo, gameState->eventID++);
                                     }
 
                                     addToUndoBufferIndex(&gameState->undoBuffer, CREATE_ENTITY, newEnt->e);
@@ -1409,13 +1479,14 @@ int main(int argc, char *args[]) {
 #if IMGUI_ON
             if(debugUI_isOn) {
                 ImGui::Begin("Entity Info");
-                ImGui::InputInt("Position", &interacting.e->ID);            
+                ImGui::InputInt("ID", &interacting.e->ID);            
                 ImGui::InputFloat3("Position", interacting.e->pos.E);            
                 ImGui::InputFloat3("Velocity", interacting.e->dP.E);            
                 ImGui::InputFloat3("Acceleration", interacting.e->ddP.E);            
                 ImGui::InputFloat3("Dim", interacting.e->dim.E);            
                 ImGui::InputFloat3("Scale", interacting.e->renderScale.E);        
                 ImGui::InputFloat3("Render offset", interacting.e->renderPosOffset.E);        
+                ImGui::ColorEdit4("Shading Color", interacting.e->shading.E); 
 
                 ImGui::SliderFloat("Angle", &interacting.e->angle, -PI32, PI32);            
 
@@ -1621,6 +1692,76 @@ int main(int argc, char *args[]) {
                 ImGui::End();
                 //ImGui::ShowDemoWindow();
 
+                //EVENT WINDOW
+                typedef struct {
+                    Event *event;
+                    int index;
+                } EventListBoxInfo;
+
+                EventListBoxInfo eventListBox[128];
+                char* eventListBoxNames[128];
+                int eventBoxCount = 0;
+
+                for(int eventIndex = 0; eventIndex < gameState->events.count; ++eventIndex) {
+                    Event *event = (Event *)getElement(&gameState->events, eventIndex);
+                    if(event) {
+                        int indexToAddTo = eventBoxCount++;
+                        EventListBoxInfo *ev = eventListBox + indexToAddTo;
+                        ev->event = event;
+                        ev->index = eventIndex;
+                        eventListBoxNames[indexToAddTo] = event->name;
+                    }
+                }
+
+                ImGui::Begin("Events");
+                static int eventListBoxCurrent = 0;
+                ImGui::ListBox("Events\n", &eventListBoxCurrent, eventListBoxNames, eventBoxCount, 4);
+                EventListBoxInfo *inspectEvent = eventListBox + eventListBoxCurrent;
+
+                if (ImGui::Button("ADD NEW EVENT")) { 
+                    //Create new events
+                    ArrayElementInfo elmIndo = getEmptyElementWithInfo(&gameState->events);
+                    inspectEvent = eventListBox + eventBoxCount++;
+                    inspectEvent->event = (Event *)elmIndo.elm;
+                    inspectEvent->index = elmIndo.absIndex;
+
+                    inspectEvent->event->ID = gameState->eventID++;
+                    char *str = "(null)";
+                    nullTerminateBuffer(inspectEvent->event->name, str, strlen(str));
+                }
+                if(eventBoxCount > 0) {
+                    assert(inspectEvent);
+                    Event *ev = selectedEvent = inspectEvent->event;
+                    ImGui::InputInt("ID", &ev->ID);            
+                    ImGui::InputText("Name", ev->name, IM_ARRAYSIZE(ev->name));
+                    if(ev->pos) {
+                        ImGui::InputFloat3("Position", ev->pos->E);            
+                    }
+                    ImGui::InputInt("Ent ID", &ev->entId);            
+                    ImGui::InputFloat3("dim", ev->dim.E);   
+
+                    ImGui::RadioButton("DIALOG", (int *)(&ev->type), (int)EVENT_DIALOG);         
+                    ImGui::RadioButton("V3 PAN", (int *)(&ev->type), (int)EVENT_V3_PAN);         
+                    ImGui::RadioButton("ACTIVATE ENTITY", (int *)(&ev->type), (int)EVENT_ENTITY_ACTIVE);         
+
+                    if(ev->type == EVENT_DIALOG) {
+                        ImGui::InputFloat("dialogTimerPeriod", &ev->dialogTimer.period);   
+                        ImGui::InputFloat("dialog display value", &ev->dialogDisplayValue);   
+                    } else if(ev->type == EVENT_V3_PAN) {
+                        //ev->lerpType;
+                    } else if(ev->type == EVENT_ENTITY_ACTIVE) {
+                      //nothing to put here  
+                    }
+                }
+
+                if (ImGui::Button("DELETE")) { 
+                    removeElement_ordered(&gameState->events, inspectEvent->index);
+                    eventListBoxCurrent = 0;
+                }
+                ImGui::End();
+
+                //
+
                 ImGui::Begin("General");
                 //ImGui::InputFloat3("Camera position", gameState->camera.pos.E);           
                 ImGui::SliderFloat("Camera Z Pos", &gameState->camera->pos.z, min(-10, gameState->camera->pos.z), max(10, gameState->camera->pos.z));            
@@ -1656,12 +1797,35 @@ int main(int argc, char *args[]) {
                 }
 
                 if(entityType == (int)ENTITY_TYPE_PLATFORM) {
-                    ImGui::RadioButton("PLATFORM_LINEAR", (int *)(&platformType), (int)PLATFORM_LINEAR); ImGui::SameLine();
+                    ImGui::RadioButton("PLATFORM_LINEAR_X", (int *)(&platformType), (int)PLATFORM_LINEAR_X); ImGui::SameLine();
+                    ImGui::RadioButton("PLATFORM_LINEAR_Y", (int *)(&platformType), (int)PLATFORM_LINEAR_Y); ImGui::SameLine();
                     ImGui::RadioButton("PLATFORM_CIRCLE", (int *)(&platformType), (int)PLATFORM_CIRCLE); ImGui::SameLine();
                     ImGui::RadioButton("PLATFORM_FIGURE_OF_EIGHT", (int *)(&platformType), (int)PLATFORM_FIGURE_OF_EIGHT);
                 }
 
+                static V4 cachedShade = COLOR_WHITE;
+                static bool resetShadeColor = false;
+                static NoteParent *cachedParent = mostRecentParentNote;
+
+                if(cachedParent != mostRecentParentNote) {
+                    assert(mostRecentParentNote);
+                    if(cachedParent) { cachedParent->e->shading = cachedShade; }
+                    cachedParent = mostRecentParentNote;
+                }
+
+                if(entityType != (int)ENTITY_TYPE_NOTE && mostRecentParentNote) {
+                    if(resetShadeColor) {
+                        mostRecentParentNote->e->shading = cachedShade;
+                    } 
+                    cachedShade = mostRecentParentNote->e->shading;
+
+                    resetShadeColor = false;
+                } 
+
                 if(entityType == (int)ENTITY_TYPE_NOTE) {
+                    assert(mostRecentParentNote);
+
+                    mostRecentParentNote->e->shading = COLOR_RED;
                     ImGui::RadioButton("C NOTE", (int *)(&noteType), (int)C_NOTE); ImGui::SameLine();
                     ImGui::RadioButton("D NOTE", (int *)(&noteType), (int)D_NOTE); ImGui::SameLine();
                     ImGui::RadioButton("D sharp NOTE", (int *)(&noteType), (int)D_SHARP_NOTE); ImGui::SameLine();
@@ -1670,6 +1834,8 @@ int main(int argc, char *args[]) {
                     ImGui::RadioButton("G NOTE", (int *)(&noteType), (int)G_NOTE); ImGui::SameLine();
                     ImGui::RadioButton("A NOTE", (int *)(&noteType), (int)A_NOTE); ImGui::SameLine();
                     ImGui::RadioButton("B NOTE", (int *)(&noteType), (int)B_NOTE); ImGui::SameLine();
+
+                    resetShadeColor = true;
                 }
 
                 if(entityType == (int)ENTITY_TYPE_NOTE_PARENT) {
@@ -1678,12 +1844,14 @@ int main(int argc, char *args[]) {
 
                 
                 static int listbox_item_current = 1;
-                ImGui::ListBox("textures\n", &listbox_item_current, listbox_items, listBoxCount, 4);
+                ImGui::ListBox("textures\n", &listbox_item_current, texNames, texCount, 4);
 
-                char *name = (char *)listbox_items[listbox_item_current];
+                char *name = (char *)texNames[listbox_item_current];
                 Asset *asset = findAsset(name);
+                assert(asset);
                 if(!asset) {
-                    asset = loadImageAsset(name);
+                    //TODO: Make the directory hot load textures
+                    //asset = loadImageAsset(name);
                 }
                 currentTex = asset;
 
