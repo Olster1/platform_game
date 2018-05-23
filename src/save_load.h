@@ -175,6 +175,54 @@ void endEntFileData(EntFileData *data) {
     free(data->mem.memory);
 }
 
+void saveProgress(GameState *gameState, char *dir, char *fileName) {
+  for(int entIndex = 0; entIndex < gameState->noteParentEnts.count; entIndex++) {
+      NoteParent *ent = (NoteParent *)getElement(&gameState->noteParentEnts, entIndex);
+      if(ent && isFlagSet(ent->e, ENTITY_VALID)) {
+          EntFileData fileData = beginEntFileData(dir, fileName, "noteParent", ent->e->ID);
+
+          beginDataType(&fileData.mem, "NoteParent");
+          
+          addVar(&fileData.mem, &ent->solved, "solved", VAR_BOOL);
+
+          endDataType(&fileData.mem);
+
+          endEntFileData(&fileData);
+      }
+  }  
+  for(int entIndex = 0; entIndex < gameState->platformEnts.count; entIndex++) {
+      Entity *ent = (Entity *)getElement(&gameState->platformEnts, entIndex);
+      if(ent && isFlagSet(ent->e, ENTITY_VALID)) {
+          EntFileData fileData = beginEntFileData(dir, fileName, "platform", ent->e->ID);
+
+          beginDataType(&fileData.mem, "Platform");
+              addVar(&fileData.mem, ent->e->pos.E, "position", VAR_V3);
+              addVar(&fileData.mem, ent->e->dP.E, "velocity", VAR_V3);
+              addVar(&fileData.mem, &ent->e->flags, "flags", VAR_LONG_INT);
+          endDataType(&fileData.mem);
+          endEntFileData(&fileData);
+      }
+  }
+  {
+    Entity *player = gameState->player;
+      EntFileData fileData = beginEntFileData(dir, fileName, "player", player->e->ID);
+      beginDataType(&fileData.mem, "Player");
+        addVar(&fileData.mem, player->e->pos.E, "position", VAR_V3);
+      endDataType(&fileData.mem);
+      endEntFileData(&fileData);
+  }
+  {
+    Entity_Commons *camera = gameState->camera;
+      EntFileData fileData = beginEntFileData(dir, fileName, "camera", camera->ID);
+      beginDataType(&fileData.mem, "Camera");
+        addVar(&fileData.mem, camera->pos.E, "position", VAR_V3);
+      endDataType(&fileData.mem);
+      endEntFileData(&fileData);
+  }
+
+
+}
+
 void saveWorld(GameState *gameState, char *dir, char *fileName) {
     
     // initArray(&gameState->particleSystems, particle_system);

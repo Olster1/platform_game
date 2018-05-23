@@ -281,7 +281,7 @@ int main(int argc, char *args[]) {
         Asset *backgroundMusic2 = loadSoundAsset((concat(globalExeBasePath,(char *)"Chill Major.wav")), &audioSpec);
         Asset *backgroundMusic3 = loadSoundAsset((concat(globalExeBasePath,(char *)"c_pad.wav")), &audioSpec);
         
-        PlayingSound *firstSound = playSound(&arena, getSoundAsset(backgroundMusic3), 0);
+        PlayingSound *firstSound = playSound(&arena, getSoundAsset(backgroundMusic3), 0, AUDIO_BACKGROUND);
         firstSound->nextSound = firstSound;
 
         // PlayingSound *secondSound = pushSound(&arena, getSoundAsset(backgroundMusic2), secondSound);
@@ -430,6 +430,7 @@ int main(int argc, char *args[]) {
         NoteValue noteType = C_NOTE;
         char noteBuf[32] = {};
         float initEntityZPos = -1;
+        NoteParent *showPuzzleProgress = 0;
 
         NoteParent *playingParentNote = 0;
         NoteParent *mostRecentParentNote = 0;
@@ -441,6 +442,7 @@ int main(int argc, char *args[]) {
         Event *selectedEvent = 0;
 
         Timer lastNoteTimer = initTimer(0.5f);
+        turnTimerOff(&lastNoteTimer);
 
         char *loadDir = concat(globalExeBasePath, "levels/");
         while(running) {
@@ -753,17 +755,10 @@ int main(int argc, char *args[]) {
                 Entity *ent = (Entity *)getElement(&gameState->platformEnts, entIndex);
                 if(isFlagSet(ent->e, ENTITY_ACTIVE)) {
                     switch(ent->platformType) {
+                        case PLATFORM_LINEAR_Y: 
                         case PLATFORM_LINEAR_X: {
                             float dpLength = getLengthV3(ent->e->dP);
                             ent->e->ddP = v3_scale(10, normalize_V3(ent->e->dP, dpLength));
-                            ent->e->ddP.y = 0;
-                            ent->e->dP.y = 0;
-                        } break;
-                        case PLATFORM_LINEAR_Y: {
-                            float dpLength = getLengthV3(ent->e->dP);
-                            ent->e->ddP = v3_scale(10, normalize_V3(ent->e->dP, dpLength));
-                            ent->e->ddP.x = 0;
-                            ent->e->dP.x = 0;
                         } break;
                         case PLATFORM_CIRCLE: {
                             V3 relP = v3_minus(ent->e->pos, ent->centerPoint);
@@ -779,6 +774,15 @@ int main(int argc, char *args[]) {
                         }
                     }
                 }
+                if(ent->platformType == PLATFORM_LINEAR_X) {
+                    ent->e->ddP.y = 0;
+                    ent->e->dP.y = 0;
+                }
+                if(ent->platformType == PLATFORM_LINEAR_Y) {
+                    ent->e->ddP.x = 0;
+                    ent->e->dP.x = 0;
+                }
+
             }
 
             //////////////NPC interaction
@@ -856,11 +860,10 @@ int main(int argc, char *args[]) {
             }
             if(door && door != gameState->player->lastDoor) {
                 //We found a door to go through
-                printf("%s\n", "is door Teleport");
                 door = door->partner;
                 assert(door);
                 gameState->player->e->pos = door->e->pos;
-                playSound(&arena, getSoundAsset(doorSound), 0);
+                playSound(&arena, getSoundAsset(doorSound), 0, AUDIO_FOREGROUND);
             }
             gameState->player->lastDoor = door;    
             /////////////////
@@ -890,13 +893,14 @@ int main(int argc, char *args[]) {
                         
                         playingParentNote->soundTimer = initTimer(nextSoundPer);
                         Asset *soundToPlay = notes[playingParentNote->sequence[0]];
-                        playSound(&arena, getSoundAsset(soundToPlay), 0);
+                        playSound(&arena, getSoundAsset(soundToPlay), 0, AUDIO_FOREGROUND);
+                        setChannelVolume(AUDIO_BACKGROUND, LOW_VOLUME, 0.5f);
                         Reactivate(&playingParentNote->e->particleSystem);
                         playingParentNote->e->shading = shadeColorForBlock;
                         setLerpInfoV4_s(&playingParentNote->shadingLerp, COLOR_WHITE, nextSoundPer, &playingParentNote->e->shading);
                     } else {
+                        //This is for the enter hovering over the note parents. 
                         V3 posAt = parentNote->e->pos;
-                        
                         theta += 4*dt;
                         posAt.y += 0.1f*sin(theta);
                         posAt.z += 0.01;
@@ -906,6 +910,7 @@ int main(int argc, char *args[]) {
                 } else {
                     theta = 0;
                 }
+
                 //player->lastParentNote = parentNote;    
             }
 
@@ -915,13 +920,14 @@ int main(int argc, char *args[]) {
                 if(info.finished) {
                     if(playingParentNote->soundAt >= playingParentNote->noteValueCount) {
                         assert(playingParentNote->soundAt <= playingParentNote->noteValueCount);
-                        playingParentNote = 0; //finsihed playing the sounds. 
+                        playingParentNote = 0; //finished playing the sounds. 
+                        setChannelVolume(AUDIO_BACKGROUND, MAX_VOLUME, 0.5f);
                     } else if(playingParentNote->soundAt < playingParentNote->noteValueCount) { //won't be the case if if there is only one note in the array
                         playingParentNote->e->shading = shadeColorForBlock;
                         setLerpInfoV4_s(&playingParentNote->shadingLerp, COLOR_WHITE, nextSoundPer, &playingParentNote->e->shading);
 
                         Asset *soundToPlay = notes[playingParentNote->sequence[playingParentNote->soundAt++]];
-                        playSound(&arena, getSoundAsset(soundToPlay), 0);
+                        playSound(&arena, getSoundAsset(soundToPlay), 0, AUDIO_FOREGROUND);
                         Reactivate(&playingParentNote->e->particleSystem);
                     }
                 }
@@ -946,7 +952,6 @@ int main(int argc, char *args[]) {
                     }
                 }
             }
-            Timer lastNoteTimer = {};
 
             if(isOn(&lastNoteTimer)) {
                 TimerReturnInfo timeInfo = updateTimer(&lastNoteTimer, dt);    
@@ -961,23 +966,33 @@ int main(int argc, char *args[]) {
 
                 assert(note->parent);
                 NoteParent *parent = note->parent;
-                int temp = addElement(&parent->values, note->value);
-                playSound(&arena, getSoundAsset(note->sound), 0);
 
-                assert(parent->values.count);
+                addValueToNoteParent(parent, note->value);
+            
+                playSound(&arena, getSoundAsset(note->sound), 0, AUDIO_FOREGROUND);
+                showPuzzleProgress = note->parent;
+
+                assert(parent->valueCount);
                 bool match = true; //try break the match
-                for(int noteIndex = 0; noteIndex < parent->values.count && match; noteIndex++) {
+                bool stillOptions = (parent->valueCount > 0);
+                int startIndex = (parent->valueCount >= arrayCount(parent->values)) ? parent->valueAt : 0;
+                for(int noteIndex = startIndex; stillOptions && match; ) { //incremented below. Have to do all this because it's a ring buffer
+                    assert(stillOptions);
                     bool keepLooking = true;
                     for(int parIndex = 0; parIndex < parent->noteValueCount && keepLooking; ++parIndex) {
                         NoteValue parVal = parent->sequence[parIndex];
                         int testIndex = noteIndex + parIndex;
-                        if(testIndex < parent->values.count) { //could overflow past the parent values 
-                            NoteValue *valPtr = (NoteValue *)getElement(&parent->values, testIndex);
-                            if(valPtr) { //can't assert on this since it is not always stack based as the array doesn't sort based on index. 
-                                NoteValue val = *valPtr;
-                                if(parVal != val) {
-                                    keepLooking = false;
-                                }
+                        //wrap index
+                        if(testIndex >= parent->valueCount) {
+                            testIndex = testIndex - parent->valueCount;
+                            assert(testIndex >= 0);
+                        }
+                        //
+
+                        if(testIndex != startIndex || noteIndex == startIndex) { //could overflow past the parent values 
+                            NoteValue val = parent->values[testIndex];
+                            if(parVal != val) {
+                                keepLooking = false;
                             }
                         } else {
                             //break both loops
@@ -986,21 +1001,33 @@ int main(int argc, char *args[]) {
                             break;
                         }
                     }
-                    assert(parent->values.count > 0);
+                    assert(parent->valueCount > 0);
                     if(match && keepLooking && parent->noteValueCount > 0) {
-                        parent->solved = true;
                         //clear out array 
-                        removeSectionOfElements(&parent->values, REMOVE_ORDERED, 0, parent->values.count);
-                        assert(parent->values.count == 0);
-                        playSound(&arena, getSoundAsset(solvedPuzzleSound), 0);
+                        parent->valueAt = 0;
+                        parent->valueCount = 0;
+                        assert(parent->valueCount == 0);
+                        playSound(&arena, getSoundAsset(solvedPuzzleSound), 0, AUDIO_FOREGROUND);
                         Reactivate(&parent->e->particleSystem);
                         assert(!currentEvent);
-                        if(parent->eventToTrigger) {
+                        if(parent->eventToTrigger && !parent->solved) {
                             pushCurrentEvent(parent->eventToTrigger, &currentEvent);
-                            
+                            parent->solved = true;
                         }
                         break;    
                     }    
+
+                    //Our for loop increment 
+                    noteIndex++;
+                    if(noteIndex >= parent->valueCount) {
+                        noteIndex = 0;
+                    }
+                    if(noteIndex == startIndex) {
+                        stillOptions = false;
+                        break;
+                    }
+                    //
+                    assert(noteIndex != startIndex);
                 }
             }
             gameState->player->lastNote = note;    
@@ -1019,12 +1046,13 @@ int main(int argc, char *args[]) {
 
             bool onPlatform = false;
             if(rayInfo.hitEnt) { //we know the player is grounded
-                if(rayInfo.hitEnt->type == ENT_TYPE_PLATFORM) {
+                if(rayInfo.hitEnt->type == ENT_TYPE_PLATFORM && isFlagSet(rayInfo.hitEnt, ENTITY_ACTIVE)) {
+                    //we update the movement of the platform
                     gameState->player->e->ddP = rayInfo.hitEnt->ddP;
                     onPlatform = true;
                 } 
                 if(inputAccel.y > 0) { //player wants to jump 
-                    playSound(&arena, getSoundAsset(jumpSound), 0);
+                    playSound(&arena, getSoundAsset(jumpSound), 0, AUDIO_FOREGROUND);
                 }
             } else {
                 //stop the player from jumping if it isn't grounded. 
@@ -1302,7 +1330,24 @@ int main(int argc, char *args[]) {
             }
         }
         ////////////
+        //DRAW PUZZLE PROGRESS
+        if(showPuzzleProgress) {
+            NoteParent *parent = showPuzzleProgress;
+            float yAtMin = 0.2f*bufferHeight;
+            float yAtMax = 0.4f*bufferHeight;
+            float widthPerNote = 0.1f*bufferWidth;
+            float xAt = 0.5f*(bufferWidth - (widthPerNote*(parent->noteValueCount + 1)));
 
+            for(int noteIndex = 0; noteIndex < parent->noteValueCount; ++noteIndex) {
+                //TODO: take account of minor notes. 
+                float value = (float)parent->sequence[noteIndex] / (float)NOTE_COUNT;
+                float yAt = lerp(yAtMin, value, yAtMax);
+                xAt += widthPerNote;
+                //TODO: change this to the pushRect system!!!
+                openGlDrawRectCenterDim(v3(xAt, yAt, -1), v2(10, 10), COLOR_RED, 0, mat4TopLeftToBottomLeft(bufferHeight), 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1));
+            }
+        }
+        //  
     
 #if DEVELOPER_MODE
             if(wasPressed(gameButtons, BUTTON_LEFT_MOUSE)) {
@@ -1910,7 +1955,8 @@ int main(int argc, char *args[]) {
 #endif
 
 
-            
+            updateChannelVolumes(dt);
+
             unsigned int now = SDL_GetTicks();
             float timeInFrame = (now - lastTime);
             //printf("%f\n", timeInFrame);

@@ -93,6 +93,7 @@ FUNC(F_NOTE) \
 FUNC(G_NOTE) \
 FUNC(A_NOTE) \
 FUNC(B_NOTE) \
+FUNC(NOTE_COUNT) \
 
 typedef enum {
 	NOTE_VALUE_TYPE(ENUM)
@@ -128,24 +129,28 @@ typedef struct Note {
 	NoteParent *parent;
 } Note;
 
+#define MAX_NOTE_SEQUENCE_SIZE 4
 typedef struct NoteParent{
 	Entity_Commons *e;
 
 	//Used to match whether it is right
-	Array_Dynamic values; //NoteValue type
-	//This can just be the  same size as the sequence. 
+	//This is a ring buffer
+	int valueAt;
+	int valueCount;
+	NoteValue values[MAX_NOTE_SEQUENCE_SIZE];
+	//
 
 	//////SET ON CREATION////
 	int noteValueCount;
-	NoteValue sequence[32]; //don't have more than a 32 note sequence. 
+	NoteValue sequence[MAX_NOTE_SEQUENCE_SIZE]; //don't have more than a 32 note sequence. 
 	////
 
 	int soundAt; 
 	Timer soundTimer;
 	LerpV4 shadingLerp;
 
-	bool solved;
-	Event *eventToTrigger; // Won't actually be a door, but some event??
+	bool solved; //this will be saved for player progress 
+	Event *eventToTrigger; 
 } NoteParent;
 
 typedef struct {
@@ -380,11 +385,10 @@ void setupNoteParent(NoteParent *entity, Entity_Commons *common) {
 		setupEntityCommons(common, entity, ENTITY_TYPE_NOTE_PARENT);
 	}
 
-	initArray(&entity->values, NoteValue);
-
 	entity->e->particleSystem.Set.VelBias = rect2fMinMax(-1, -1, 1, 1);
 	entity->e->particleSystem.Set.type = PARTICLE_SYS_CIRCULAR;
 	entity->shadingLerp = initLerpV4();
+	entity->solved = false;
 }
 
 void initNoteParentEnt(Array_Dynamic *commons_, NoteParent *entity, V3 pos, Asset *tex, int ID) {
@@ -427,6 +431,17 @@ void initNPCEnt(Array_Dynamic *commons_, Array_Dynamic *events, NPC *entity, V3 
 	evComInfo.pos = &com->pos;
 	
 	entity->event = addDialogEvent(events, &evComInfo, v3_scale(2, entity->e->dim), EVENT_EXPLICIT | EVENT_TRIGGER, eventId);
+}
+
+void addValueToNoteParent(NoteParent *parent, NoteValue value) {
+	assert(parent->valueAt < arrayCount(parent->values) && parent->valueAt >= 0);
+	int atIndex = parent->valueAt++;
+	if(parent->valueAt >= arrayCount(parent->values)) {
+	    parent->valueAt = 0;
+	}
+	parent->values[atIndex] = value;
+	parent->valueCount = min(arrayCount(parent->values), ++parent->valueCount);
+	assert(parent->valueCount <= arrayCount(parent->values));
 }
 
 #define calculateRenderInfoForEntity(ent, cameraPos, metresToPixels) calculateRenderInfo(v3_plus(ent->pos, ent->renderPosOffset), ent->dim, cameraPos, metresToPixels)
