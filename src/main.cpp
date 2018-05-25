@@ -409,6 +409,8 @@ int main(int argc, char *args[]) {
         InteractItem interacting = {}; 
         int entityType = 1; //TODO: Maybe use actual types 
 
+        V4 noteShades[NOTE_COUNT] = {COLOR_RED, COLOR_PINK, COLOR_GREEN, COLOR_YELLOW, COLOR_WHITE, COLOR_BLUE, COLOR_BLACK, v4(0.4f, 0.8f, 0.2f, 1.0f)};
+
         Entity_Commons *lastSelectedEnt = 0;
         
         ///IMGUI variables
@@ -427,7 +429,7 @@ int main(int argc, char *args[]) {
         float ReboundCoefficient = 0.4f;
         bool shadeColor = false;
         bool debugUI_isOn = false;
-        NoteValue noteType = C_NOTE;
+        //NoteValue noteType = C_NOTE;
         char noteBuf[32] = {};
         float initEntityZPos = -1;
         NoteParent *showPuzzleProgress = 0;
@@ -892,7 +894,7 @@ int main(int argc, char *args[]) {
                         playingParentNote->soundAt = 1; //we play the first sound here. 
                         
                         playingParentNote->soundTimer = initTimer(nextSoundPer);
-                        Asset *soundToPlay = notes[playingParentNote->sequence[0]];
+                        Asset *soundToPlay = notes[playingParentNote->sequence[0]->value];
                         playSound(&arena, getSoundAsset(soundToPlay), 0, AUDIO_FOREGROUND);
                         setChannelVolume(AUDIO_BACKGROUND, LOW_VOLUME, 0.5f);
                         Reactivate(&playingParentNote->e->particleSystem);
@@ -926,7 +928,7 @@ int main(int argc, char *args[]) {
                         playingParentNote->e->shading = shadeColorForBlock;
                         setLerpInfoV4_s(&playingParentNote->shadingLerp, COLOR_WHITE, nextSoundPer, &playingParentNote->e->shading);
 
-                        Asset *soundToPlay = notes[playingParentNote->sequence[playingParentNote->soundAt++]];
+                        Asset *soundToPlay = notes[playingParentNote->sequence[playingParentNote->soundAt++]->value];
                         playSound(&arena, getSoundAsset(soundToPlay), 0, AUDIO_FOREGROUND);
                         Reactivate(&playingParentNote->e->particleSystem);
                     }
@@ -980,7 +982,7 @@ int main(int argc, char *args[]) {
                     assert(stillOptions);
                     bool keepLooking = true;
                     for(int parIndex = 0; parIndex < parent->noteValueCount && keepLooking; ++parIndex) {
-                        NoteValue parVal = parent->sequence[parIndex];
+                        NoteValue parVal = parent->sequence[parIndex]->value;
                         int testIndex = noteIndex + parIndex;
                         //wrap index
                         if(testIndex >= parent->valueCount) {
@@ -1340,7 +1342,7 @@ int main(int argc, char *args[]) {
 
             for(int noteIndex = 0; noteIndex < parent->noteValueCount; ++noteIndex) {
                 //TODO: take account of minor notes. 
-                float value = (float)parent->sequence[noteIndex] / (float)NOTE_COUNT;
+                float value = (float)parent->sequence[noteIndex]->value / (float)NOTE_COUNT;
                 float yAt = lerp(yAtMin, value, yAtMax);
                 xAt += widthPerNote;
                 //TODO: change this to the pushRect system!!!
@@ -1414,18 +1416,18 @@ int main(int argc, char *args[]) {
                                     initPlatformEnt(&gameState->commons, newEnt, initPos, blockTex, gameState->ID++, platformType);
                                     addToUndoBufferIndex(&gameState->undoBuffer, CREATE_ENTITY, newEnt->e);
                                 } break;
-                                case ENTITY_TYPE_NOTE: {
-                                    Note *newEnt = (Note *)getEmptyElement(&gameState->noteEnts);
-                                    Asset *noteSound = notes[noteType];
-                                    initNoteEnt(&gameState->commons, newEnt, initPos, noteTex, noteSound, gameState->ID++);
+                                // case ENTITY_TYPE_NOTE: {
+                                //     Note *newEnt = (Note *)getEmptyElement(&gameState->noteEnts);
+                                //     Asset *noteSound = notes[noteType];
+                                //     initNoteEnt(&gameState->commons, newEnt, initPos, noteTex, noteSound, gameState->ID++);
 
-                                    newEnt->parent = mostRecentParentNote;
-                                    assert(newEnt->parent);
-                                    newEnt->value = noteType;
+                                //     newEnt->parent = mostRecentParentNote;
+                                //     assert(newEnt->parent);
+                                //     newEnt->value = noteType;
 
-                                    addToUndoBufferIndex(&gameState->undoBuffer, CREATE_ENTITY, newEnt->e);
+                                //     addToUndoBufferIndex(&gameState->undoBuffer, CREATE_ENTITY, newEnt->e);
                                     
-                                } break;
+                                // } break;
                                 case ENTITY_TYPE_NOTE_PARENT: {
                                     NoteParent *newEnt = (NoteParent *)getEmptyElement(&gameState->noteParentEnts);
                                     initNoteParentEnt(&gameState->commons, newEnt, initPos, stevinusTex, gameState->ID++);
@@ -1434,7 +1436,31 @@ int main(int argc, char *args[]) {
                                     while(*at) {
                                         char value = *at - 48; //get value relative to 0
                                         if(value < arrayCount(notes)) {
-                                            newEnt->sequence[newEnt->noteValueCount++] = (NoteValue)value;
+                                            //get new note
+                                            Note *newNoteEnt = (Note *)getEmptyElement(&gameState->noteEnts);
+                                            //
+
+                                            NoteValue noteType = (NoteValue)value;
+                                            Asset *noteSound = notes[noteType];
+
+                                            int foo = newEnt->noteValueCount + 1;
+                                            int across = 4;
+                                            int x = foo % across;
+                                            int y = foo / across;
+
+                                            V3 notePos = v3(initPos.x + x, initPos.y + y, initPos.z);
+
+                                            initNoteEnt(&gameState->commons, newNoteEnt, notePos, noteTex, noteSound, gameState->ID++);
+
+                                            newNoteEnt->parent = mostRecentParentNote;
+                                            assert(newNoteEnt->parent);
+                                            newNoteEnt->value = noteType;
+                                            newNoteEnt->e->shading = noteShades[noteType];
+
+                                            addToUndoBufferIndex(&gameState->undoBuffer, CREATE_ENTITY, newNoteEnt->e);
+
+                                            newEnt->sequence[newEnt->noteValueCount++] = newNoteEnt;
+                                            
                                         }
                                         at++;
                                     }
@@ -1867,21 +1893,21 @@ int main(int argc, char *args[]) {
                     resetShadeColor = false;
                 } 
 
-                if(entityType == (int)ENTITY_TYPE_NOTE) {
-                    assert(mostRecentParentNote);
+                // if(entityType == (int)ENTITY_TYPE_NOTE) {
+                //     assert(mostRecentParentNote);
 
-                    mostRecentParentNote->e->shading = COLOR_RED;
-                    ImGui::RadioButton("C NOTE", (int *)(&noteType), (int)C_NOTE); ImGui::SameLine();
-                    ImGui::RadioButton("D NOTE", (int *)(&noteType), (int)D_NOTE); ImGui::SameLine();
-                    ImGui::RadioButton("D sharp NOTE", (int *)(&noteType), (int)D_SHARP_NOTE); ImGui::SameLine();
-                    ImGui::RadioButton("E NOTE", (int *)(&noteType), (int)E_NOTE); ImGui::SameLine();
-                    ImGui::RadioButton("F NOTE", (int *)(&noteType), (int)F_NOTE); 
-                    ImGui::RadioButton("G NOTE", (int *)(&noteType), (int)G_NOTE); ImGui::SameLine();
-                    ImGui::RadioButton("A NOTE", (int *)(&noteType), (int)A_NOTE); ImGui::SameLine();
-                    ImGui::RadioButton("B NOTE", (int *)(&noteType), (int)B_NOTE); ImGui::SameLine();
+                //     mostRecentParentNote->e->shading = COLOR_RED;
+                //     ImGui::RadioButton("C NOTE", (int *)(&noteType), (int)C_NOTE); ImGui::SameLine();
+                //     ImGui::RadioButton("D NOTE", (int *)(&noteType), (int)D_NOTE); ImGui::SameLine();
+                //     ImGui::RadioButton("D sharp NOTE", (int *)(&noteType), (int)D_SHARP_NOTE); ImGui::SameLine();
+                //     ImGui::RadioButton("E NOTE", (int *)(&noteType), (int)E_NOTE); ImGui::SameLine();
+                //     ImGui::RadioButton("F NOTE", (int *)(&noteType), (int)F_NOTE); 
+                //     ImGui::RadioButton("G NOTE", (int *)(&noteType), (int)G_NOTE); ImGui::SameLine();
+                //     ImGui::RadioButton("A NOTE", (int *)(&noteType), (int)A_NOTE); ImGui::SameLine();
+                //     ImGui::RadioButton("B NOTE", (int *)(&noteType), (int)B_NOTE); ImGui::SameLine();
 
-                    resetShadeColor = true;
-                }
+                //     resetShadeColor = true;
+                // }
 
                 if(entityType == (int)ENTITY_TYPE_NOTE_PARENT) {
                     ImGui::InputText("note parent values", noteBuf, IM_ARRAYSIZE(noteBuf));

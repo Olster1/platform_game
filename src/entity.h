@@ -129,7 +129,7 @@ typedef struct Note {
 	NoteParent *parent;
 } Note;
 
-#define MAX_NOTE_SEQUENCE_SIZE 4
+#define MAX_NOTE_SEQUENCE_SIZE 16
 typedef struct NoteParent{
 	Entity_Commons *e;
 
@@ -142,7 +142,7 @@ typedef struct NoteParent{
 
 	//////SET ON CREATION////
 	int noteValueCount;
-	NoteValue sequence[MAX_NOTE_SEQUENCE_SIZE]; //don't have more than a 32 note sequence. 
+	Note *sequence[MAX_NOTE_SEQUENCE_SIZE]; //don't have more than a 32 note sequence. 
 	////
 
 	int soundAt; 

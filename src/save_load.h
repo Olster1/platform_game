@@ -30,7 +30,7 @@ void addVar_(InfiniteAlloc *mem, void *val_, int count, char *varName, VarType t
     sprintf(data, "\t%s: ", varName);
     addElementInifinteAllocWithCount_(mem, data, strlen(data));
 
-    if(count > 1 && type != VAR_CHAR_STAR) {
+    if(count > 1 && (type != VAR_CHAR_STAR || type != VAR_INT)) {
         assert(!"array not handled yet");
     }
     switch(type) {
@@ -65,8 +65,27 @@ void addVar_(InfiniteAlloc *mem, void *val_, int count, char *varName, VarType t
             sprintf(data, "%ld", val[0]);
         } break;
         case VAR_INT: {
-            int *val = (int *)val_;
-            sprintf(data, "%d", val[0]);
+            if(count == 1) {
+                int *val = (int *)val_;
+                sprintf(data, "%d", val[0]);
+            } else {
+                assert(count > 1);
+
+                int *val = (int *)val_;
+                char *bracket = "[";
+                addElementInifinteAllocWithCount_(mem, bracket, 1);
+                for(int i = 0; i < count; ++i) {
+                    sprintf(data, "%d", val[i]);    
+                    addElementInifinteAllocWithCount_(mem, data, strlen(data));
+                    if(i != count - 1) {
+                        char *commaString = ", ";
+                        addElementInifinteAllocWithCount_(mem, commaString, 2);
+                    }
+                }
+                bracket = "]";
+                addElementInifinteAllocWithCount_(mem, bracket, 1);
+                data[0] = 0; //clear data
+            }
         } break;
         case VAR_FLOAT: {
             float *val = (float *)val_;
@@ -251,12 +270,11 @@ void saveWorld(GameState *gameState, char *dir, char *fileName) {
             addVar(&fileData.mem, &ent->noteValueCount, "noteValueCount", VAR_INT);
             
             if(ent->noteValueCount > 0) {
-                char *noteStrings[32] = {};
+                int noteIds[32] = {};
                 for(int i = 0; i < ent->noteValueCount; ++i) {
-                    char *noteValue = NoteValueStrings[ent->sequence[i]];
-                    noteStrings[i] = noteValue;
+                    noteIds[i] = ent->sequence[i]->e->ID;
                 }
-                addVarArray(&fileData.mem, noteStrings, ent->noteValueCount, "noteSequence", VAR_CHAR_STAR);
+                addVarArray(&fileData.mem, noteIds, ent->noteValueCount, "noteSequenceIds", VAR_INT);
             }
             if(ent->eventToTrigger) {
                 addVar(&fileData.mem, &ent->eventToTrigger->ID, "eventID", VAR_INT);
@@ -460,6 +478,7 @@ InfiniteAlloc getDataObjects(EasyTokenizer *tokenizer) {
     while(parsing) {
         char *at = tokenizer->src;
         EasyToken token = lexGetNextToken(tokenizer);
+        lexPrintToken(&token);
         assert(at != tokenizer->src);
         switch(token.type) {
             case TOKEN_NULL_TERMINATOR: {
@@ -480,7 +499,7 @@ InfiniteAlloc getDataObjects(EasyTokenizer *tokenizer) {
                 data.type = VAR_INT;
                 char charBuffer[256] = {};
                 int value = atoi(nullTerminateBuffer(charBuffer, token.at, token.size));
-
+                printf("HEY A VALUE: %d\n", value);
                 int *var = &data.intVal;
                 *var = value;
                 addElementInifinteAlloc_(&types, &data);
@@ -850,15 +869,21 @@ void loadWorld(GameState *gameState, char *dir) {
                             entData.noteParent->noteValueCount = getIntFromDataObjects(&data, &tokenizer);
                         }
                         //add all notes for the sequence
-                        if(stringsMatchNullN("noteSequence", token.at, token.size)) {
+                        if(stringsMatchNullN("noteSequenceIds", token.at, token.size)) {
                             data = getDataObjects(&tokenizer);
                             DataObject *objs = (DataObject *)data.memory;
+                            printf("%d\n", entData.noteParent->noteValueCount);
+                            printf("data count: %d\n", data.count);
                             assert(entData.noteParent->noteValueCount == data.count || entData.noteParent->noteValueCount == 0);
                             for(int noteIndex = 0; noteIndex < data.count; noteIndex++) {
-                                assert(objs[noteIndex].type == VAR_CHAR_STAR);    
-                                int typeAsInt = findEnumValue(objs[noteIndex].stringVal, NoteValueStrings, arrayCount(NoteValueStrings));
-                                assert(typeAsInt >= 0);
-                                entData.noteParent->sequence[noteIndex] = (NoteValue)typeAsInt;
+                                assert(objs[noteIndex].type == VAR_INT);    
+                                int noteId = objs[noteIndex].intVal;
+
+                                assert(patchCount < arrayCount(patches));
+                                PointerToPatch *patch = patches + patchCount++;
+                                patch->type = PATCH_TYPE_ENTITY;
+                                patch->id = noteId;
+                                patch->ptr = (void **)(&entData.noteParent->sequence[noteIndex]);
                             }
                         }
                         if(stringsMatchNullN("eventID", token.at, token.size)) {
