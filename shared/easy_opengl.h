@@ -480,7 +480,7 @@ void loadVertices(Vertex *triangleData, int triCount, unsigned int *indicesData,
     glBindBuffer(GL_ARRAY_BUFFER, vertices);
     glCheckError();
     
-    glBufferData(GL_ARRAY_BUFFER, triCount*sizeof(Vertex), triangleData, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, triCount*sizeof(Vertex), triangleData, GL_STREAM_DRAW);
     glCheckError();
     
     glGenBuffers(1, &indices);
@@ -488,7 +488,7 @@ void loadVertices(Vertex *triangleData, int triCount, unsigned int *indicesData,
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indices);
     glCheckError();
     
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, indexCount*sizeof(unsigned int), indicesData, GL_STATIC_DRAW);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, indexCount*sizeof(unsigned int), indicesData, GL_STREAM_DRAW);
     glCheckError();
     
     GLint PVMUniform = glGetUniformLocation(programId, "PVM");
@@ -1096,6 +1096,7 @@ Texture loadImage(char *fileName) {
         
         stbi_image_free(image);
     } else { 
+        printf("%s\n", fileName);
         assert(!"no image found");
     }
     return result;

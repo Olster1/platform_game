@@ -447,6 +447,19 @@ int main(int argc, char *args[]) {
         turnTimerOff(&lastNoteTimer);
 
         char *loadDir = concat(globalExeBasePath, "levels/");
+
+        FileNameOfType folderFileNames = getDirectoryFolders(loadDir);
+        if(folderFileNames.count) {
+            printf("folder count: %d\n", folderFileNames.count);
+            char *folderName = folderFileNames.names[0];
+            char *levelName = concat(folderName, "/");
+            printf("%s\n", levelName);
+            loadWorld(gameState, levelName);
+
+        }
+
+        freeFolderNames(&folderFileNames);
+        
         while(running) {
             testInt = 0;
             //Save state of last frame game buttons 
@@ -1669,33 +1682,36 @@ int main(int argc, char *args[]) {
                 //LOAD WORLD button
                 FileNameOfType folderFileNames = getDirectoryFolders(loadDir);
 
-                static char* folder_listbox_items[64];
-                int folderListBoxCount = 0;
+                static char* levelItems[64];
+                static int levelCount = 0;
+
+                for(int i = 0; i < levelCount; ++i) {
+                    free(levelItems[i]);
+                }
+
+                levelCount = 0;
 
                 for(int i = 0; i < folderFileNames.count; ++i) {
-                    if(folder_listbox_items[i]) {
-                        free(folder_listbox_items[i]);
-                    }
                     char *name = folderFileNames.names[i];
-                    folder_listbox_items[folderListBoxCount++] = getFileLastPortion(name);
+                    levelItems[levelCount++] = getFileLastPortion(name);
                     free(name);
                 }
 
-                static int folder_listbox_item_current = 0;
-                ImGui::ListBox("levels\n", &folder_listbox_item_current, folder_listbox_items, folderListBoxCount, 4);
+                static int levelItemCurrent = 0;
+                ImGui::ListBox("levels\n", &levelItemCurrent, levelItems, levelCount, 4);
 
-                char *loadDirName = (char *)folder_listbox_items[folder_listbox_item_current];
+                char *loadDirName = (char *)levelItems[levelItemCurrent];
 
                 if (ImGui::Button("Load Level")) { 
                     char *dirNameExe = concat(globalExeBasePath, "levels/");
                     char *dirName0 = concat(dirNameExe, loadDirName);
                     char *finalDirName = concat(dirName0, "/"); //TODO: probably don't need this 
-                    printf("%s\n", finalDirName);
                     loadWorld(gameState, finalDirName);
                     free(dirNameExe);
                     free(dirName0);
                     free(finalDirName);
                 }
+                /////
 
                 ////SAVE LEVEL BUTTON//
                 static LerpV4 saveTimerDisplay = initLerpV4();

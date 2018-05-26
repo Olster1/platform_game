@@ -251,6 +251,18 @@ void *getEmptyElement(Array_Dynamic *array) {
     return result;
 }
 
+typedef struct {
+    void *elm; 
+    int absIndex;
+} ArrayElementInfo;
+
+ArrayElementInfo getEmptyElementWithInfo(Array_Dynamic *array) {
+    ArrayElementInfo result = {};
+    result.absIndex = addElement_(array, 0, array->sizeofType);
+    result.elm = getElement(array, result.absIndex);
+    return result;
+}
+
 void removeElement_unordered(Array_Dynamic *array, int absIndex) {
     
     PoolInfo info = getPoolInfo(array, absIndex);

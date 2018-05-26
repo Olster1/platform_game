@@ -31,6 +31,7 @@ void addVar_(InfiniteAlloc *mem, void *val_, int count, char *varName, VarType t
     addElementInifinteAllocWithCount_(mem, data, strlen(data));
 
     if(count > 1 && (type != VAR_CHAR_STAR || type != VAR_INT)) {
+        printf("%d\n", (int)type);
         assert(!"array not handled yet");
     }
     switch(type) {
@@ -1044,4 +1045,10 @@ void loadWorld(GameState *gameState, char *dir) {
 
     assert(gameState->player);
     assert(gameState->camera);
+}
+
+void freeFolderNames(FileNameOfType* folderFileNames) {
+    for(int i = 0; i < folderFileNames->count; ++i) {
+        free(folderFileNames->names[i]);
+    }
 }

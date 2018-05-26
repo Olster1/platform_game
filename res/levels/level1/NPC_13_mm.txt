@@ -1,19 +1,21 @@
 NPC: {
-	eventID: 0;
+	eventID: 1;
 
 }
 Commons: {
-	id: 3;
+	id: 13;
 	name: "(null)";
 	flags: 121;
 	type: "ENT_TYPE_DEFAULT";
-	position: 3.933334 2.001000 -1.000000;
+	position: -10.810071 2.001000 -1.000000;
+	velocity: 0.000000 0.404040 0.000000;
 	renderPosOffset: 0.000000 0.300000 0.000000;
 	dim: 1.000000 1.000000 1.000000;
 	renderScale: 2.000000 2.000000 1.000000;
 	shading: 1.000000 1.000000 1.000000 1.000000;
 	texture: "door1.png";
 	inverseWeight: 1.000000;
+	angle: 0.000000;
 	animation: "chubby man animation";
 
 }

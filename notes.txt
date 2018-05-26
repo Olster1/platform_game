@@ -1,17 +1,21 @@
+//NOT URGENT: 
 [] When you select item why is the camera Z - pos instead of reverse
 [] Make camera more responsive 
-[] Put platform invisible structures 
 [] Draw player last & change depth buffer to <=
-[] Numerical instability for platforms. Confine them to a particular direction, which ever is greatest?
-[] Draw insteract box with the render offset
-[x] Make events use pointers & generate rectangles each frame (instead of on init)
+
+//ENGINE 
+[] Put platform invisible structures for platforms in the y-axis
 [] change undo to circular buffer
-[] have collision objects move on events and platforms start moving
 [] Do basic AI for NPC character
-[] Find out why font rendering is so slow
-[] Add floating space for interacting with explicit events
-[] Control note playing timers -> blocks coming down to play notes
-[] Have time based note puzzles
+
+[] Have a push renderer to buffer openGL calls -> the font rendering is slow
+[] Have player progress saved -> new directory that loads on top and has things like solved & saved positions of entities
+
+[] Introspect the different types data -> edit note parent sequence
+
+//GAME-PLAY
 [] Have pop up of how successful you are in the note puzzle -> fade away when you get one wrong 
-[] Save & load level data
-[] Have flags for sound channels and pass different channel volumes i.e. can have background music quiet
+[] Have notes that can be anything and you can program bots to fill them in -> platforms moving up and notes on ledges 
+[] Control note playing timers -> blocks coming down to play notes
+[] Have time based note puzzles -> have a line moving across the note helper 
+[] Change pattern matching note buffer to a fixed sized array -> size if as many notes a pattern can have.  

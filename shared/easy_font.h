@@ -1,7 +1,5 @@
 /*
 File to enable writing with fonts easy to add to your project. Uses Sean Barret's stb_truetype file to load and write the fonts. Requires a current openGL context. Right now uses fixed function pipeline. 
-TODO: 
-Move to programmable pipeline. 
 */
 
 #define STB_TRUETYPE_IMPLEMENTATION 

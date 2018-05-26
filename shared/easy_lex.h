@@ -280,9 +280,8 @@ EasyToken lexGetToken_(EasyTokenizer *tokenizer, bool advanceWithToken) {
 			} else if(lexIsNumeric(*at) || *at == '-') {
 				token = lexInitToken(TOKEN_INTEGER, at, 1);
 				int numberOfDecimal = 0;
-				bool hasUnit = false;
 				at++; //move past the first number
-				while(*at && (lexIsNumeric(*at) || *at == '.' || lexIsAlphaNumeric(*at) || *at == '%' )) {
+				while(*at && (lexIsNumeric(*at) || *at == '.')) {
 					if(*at == '.') {
 						numberOfDecimal++;
 						if(numberOfDecimal > 1) {
@@ -290,16 +289,10 @@ EasyToken lexGetToken_(EasyTokenizer *tokenizer, bool advanceWithToken) {
 							break;
 						}
 					}
-					else if(lexIsAlphaNumeric(*at) || *at == '%') {
-						hasUnit = true;
-					} else if(hasUnit){
-						printf("you have a number mixed with unit letters in your define statement at %d", *lineNumber);
-						break;
-					}
+					
 					at++;
 				}
 				if(numberOfDecimal > 0) token.type = TOKEN_FLOAT;
-				if(hasUnit > 0) token.type = TOKEN_VALUE_WITH_UNIT;
 				token.size = at - token.at;
 			} else {
 				printf("character %.*s not known\n", 1, at);

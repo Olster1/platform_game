@@ -78,6 +78,7 @@ typedef struct {
     V3 *val;
     Timer timer;
 } LerpV3;
+
 //TODO: change this to its own TimerVarType
 typedef enum {
     VAR_CHAR_STAR,
@@ -266,6 +267,10 @@ bool isOn(Timer *timer) {
 
 void turnTimerOn(Timer *timer) {
     timer->value = 0;
+}
+
+void turnTimerOff(Timer *timer) {
+    timer->value = -1;
 }
 
 LerpV4 initLerpV4() {

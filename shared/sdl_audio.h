@@ -20,12 +20,68 @@ typedef struct WavFilePtr {
     WavFilePtr *next;
 } WavFilePtr;
 
+typedef enum {
+    AUDIO_BACKGROUND,
+    AUDIO_FOREGROUND,
+    AUDIO_CHANNEL_COUNT
+} AudioChannel;
+
+
+#define LOW_VOLUME 32
+#define MIDDLE_VOLUME 64
+#define MAX_VOLUME 64
+
+//This is for setting the volume channels 
+//NOTE: volume is between 0 - 128
+
+typedef struct {
+    float tAt; //0 to 1
+    float period;
+    int a;
+    int b;
+    bool active;
+} VolumeLerp;
+
+static int channelVolumes_[AUDIO_CHANNEL_COUNT] = {MAX_VOLUME, MAX_VOLUME};
+static VolumeLerp channelVolumesLerps_[AUDIO_CHANNEL_COUNT] = {};
+
+
+void setChannelVolume(AudioChannel channel, int targetVolume, float period) {
+    VolumeLerp *lerpValue = channelVolumesLerps_ + channel;
+    lerpValue->a = channelVolumes_[channel];
+    lerpValue->b = clamp(0, targetVolume, 128);
+    lerpValue->tAt = 0;
+    lerpValue->period = period;
+    lerpValue->active = true;
+}
+
+void updateChannelVolumes(float dt) {
+    for(int channelAt = 0; channelAt < AUDIO_CHANNEL_COUNT; ++channelAt) {
+        VolumeLerp *lerpVal = channelVolumesLerps_ + channelAt;
+        if(lerpVal->active) {
+            float a = (float)lerpVal->a;
+            float b = (float)lerpVal->b;
+
+            lerpVal->tAt += dt;
+            float tValue = lerpVal->tAt / lerpVal->period;
+            float volume = lerp(a, clamp(0, tValue, 1), b);
+            //set channel volume
+            channelVolumes_[channelAt] = (int)clamp(0, volume, 128);
+            //
+            if(tValue >= 1) {
+                lerpVal->tAt = 0;
+                lerpVal->active = false;
+            }
+        }
+    }
+}
 
 typedef struct PlayingSound {
     WavFile *wavFile;
     unsigned int bytesAt;
 
     bool active;
+    AudioChannel channel;
     
     PlayingSound *nextSound;
     
@@ -114,7 +170,7 @@ void addSound_(WavFile *sound) {
     
 }
 
-PlayingSound *playSound(Arena *arena, WavFile *wavFile, PlayingSound *nextSoundToPlay) {
+PlayingSound *playSound(Arena *arena, WavFile *wavFile, PlayingSound *nextSoundToPlay, AudioChannel channel) {
     PlayingSound *result = playingSoundsFreeList;
     if(result) {
         playingSoundsFreeList = result->next;
@@ -128,6 +184,7 @@ PlayingSound *playSound(Arena *arena, WavFile *wavFile, PlayingSound *nextSoundT
     playingSounds = result;
     
     result->active = true;
+    result->channel = channel;
     result->nextSound = nextSoundToPlay;
     result->bytesAt = 0;
     result->wavFile = wavFile;
@@ -135,8 +192,8 @@ PlayingSound *playSound(Arena *arena, WavFile *wavFile, PlayingSound *nextSoundT
 }
 
 //This call is for setting a sound up but not playing it. 
-PlayingSound *pushSound(Arena *arena, WavFile *wavFile, PlayingSound *nextSoundToPlay) {
-    PlayingSound *result = playSound(arena, wavFile, nextSoundToPlay);
+PlayingSound *pushSound(Arena *arena, WavFile *wavFile, PlayingSound *nextSoundToPlay, AudioChannel channel) {
+    PlayingSound *result = playSound(arena, wavFile, nextSoundToPlay, channel);
     result->active = false;
     return result;
 }
@@ -210,9 +267,10 @@ bool initAudio(SDL_AudioSpec *audioSpec) {
     return successful;
 }
 
-
+//TODO: Pull mixing function out into it's own function???
 SDL_AUDIO_CALLBACK(audioCallback) {
     SDL_memset(stream, 0, len);
+
     for(PlayingSound **soundPrt = &playingSounds;
         *soundPrt; 
         ) {
@@ -226,7 +284,8 @@ SDL_AUDIO_CALLBACK(audioCallback) {
             
             unsigned int bytesToWrite = (remainingBytes < len) ? remainingBytes: len;
             
-            SDL_MixAudio(stream, samples, bytesToWrite, SDL_MIX_MAXVOLUME);
+            int volume = channelVolumes_[sound->channel];
+            SDL_MixAudio(stream, samples, bytesToWrite, volume);
             
             sound->bytesAt += bytesToWrite;
             
