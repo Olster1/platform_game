@@ -70,6 +70,7 @@ static Texture globalFireTex_debug = {};
 #include "undo_buffer.h"
 #include "easy_animation.h" //relys on gameState
 #include "save_load.h"
+#include "menu.h"
 
 static bool runningFunc = false;
 
@@ -319,13 +320,15 @@ int main(int argc, char *args[]) {
         for(int i = 0; i < fileNames.count; ++i) {
             char *fullName = fileNames.names[i];
             char *shortName = getFileLastPortion(fullName);
-            int indexAt = texCount++;
-            texNames[indexAt] = shortName;
-            //texNamesFull[indexAt] = fullName;
-            Asset *asset = findAsset(shortName);
-            assert(!asset);
-            if(!asset) {
-                asset = loadImageAsset(fullName);
+            if(shortName[0] != '.') { //don't load hidden file 
+                int indexAt = texCount++;
+                texNames[indexAt] = shortName;
+                //texNamesFull[indexAt] = fullName;
+                Asset *asset = findAsset(shortName);
+                assert(!asset);
+                if(!asset) {
+                    asset = loadImageAsset(fullName);
+                }
             }
             free(fullName);
         }
@@ -450,15 +453,19 @@ int main(int argc, char *args[]) {
 
         FileNameOfType folderFileNames = getDirectoryFolders(loadDir);
         if(folderFileNames.count) {
-            printf("folder count: %d\n", folderFileNames.count);
             char *folderName = folderFileNames.names[0];
             char *levelName = concat(folderName, "/");
-            printf("%s\n", levelName);
             loadWorld(gameState, levelName);
 
         }
 
         freeFolderNames(&folderFileNames);
+
+        MenuInfo menuInfo = {};
+        menuInfo.font = &mainFontLarge;
+        menuInfo.windowHandle = windowHandle;
+        menuInfo.running = &running;
+        menuInfo.lastMode = menuInfo.gameMode = MENU_MODE;
         
         while(running) {
             testInt = 0;
@@ -509,8 +516,6 @@ int main(int argc, char *args[]) {
                     switch(keyCode) {
                         case SDLK_RETURN: {
                             buttonType = BUTTON_ENTER;
-                            if(isDown) {
-                            }
                         } break;
                         case SDLK_SPACE: {
                             buttonType = BUTTON_SPACE;
@@ -523,6 +528,9 @@ int main(int argc, char *args[]) {
                         } break;
                         case SDLK_DOWN: {
                             buttonType = BUTTON_DOWN;
+                        } break;
+                        case SDLK_1: {
+                            buttonType = BUTTON_1;
                         } break;
                         case SDLK_LSHIFT: {
                             //buttonType = BUTTON_SHIFT;
@@ -595,22 +603,16 @@ int main(int argc, char *args[]) {
                 clearBufferAndBind(compositedBufferMultiSampled.bufferId, COLOR_PINK); 
             }
 #endif
+            if(drawMenu(&menuInfo, gameButtons, getTextureAsset(skyTex))) {
+            
+
             glDisable(GL_DEPTH_TEST);
             openGlTextureCentreDim(getTextureAsset(skyTex)->id, v2ToV3(middleP, -1), v2(bufferWidth, bufferHeight), COLOR_WHITE, 0, mat4(), 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1));
             glEnable(GL_DEPTH_TEST);
             ///////
             //////INPUT/////
             ///////EDITOR INPUT///////
-            if(wasPressed(gameButtons, BUTTON_ESCAPE)) {
-                /* FULLSCREEN STUFF
-                bool isFullScreen = (windowFlags & SDL_WINDOW_FULLSCREEN);
-                if(SDL_SetWindowFullscreen(windowHandle, false) < 0) {
-                    printf("couldn't un-set to full screen\n");
-                }
-                if(SDL_SetWindowFullscreen(windowHandle, SDL_WINDOW_FULLSCREEN) < 0) {
-                    printf("couldn't set to full screen\n");
-                }
-                */
+            if(wasPressed(gameButtons, BUTTON_1)) {
                 debugUI_isOn = !debugUI_isOn;
             }
             if(wasPressed(gameButtons, BUTTON_ENTER)) {
@@ -702,14 +704,21 @@ int main(int argc, char *args[]) {
                             setFlag(ent, ENTITY_ACTIVE);
                             currentEvent = currentEvent->nextEvent;
                         } break;
+                        case EVENT_FADE_OUT: {
+                            TimerReturnInfo timeInfo = updateTimer(&currentEvent->fadeTimer, dt);
+                            openGlDrawRectCenterDim(v3(0.5f*bufferWidth, 0.5f*bufferHeight, gameState->camera->pos.z - 0.1f), v2(bufferWidth, bufferHeight), v4(0, 0, 0, lerp(0, timeInfo.canonicalVal, 1)), 0, mat4TopLeftToBottomLeft(bufferHeight), 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1));
+                            if(timeInfo.finished) {
+                                currentEvent->fadeTimer.value = 0;
+                                currentEvent = currentEvent->nextEvent;
+                            }
+                        } break;
                     }
-
+                    
                     if(lastEvent != currentEvent && currentEvent) {
                         setEventFlag(currentEvent, EVENT_FRESH);   
                     }
                 }
             // } 
-
 
             if(!currentEvent){
                 ////PLAYER INPUT
@@ -1442,51 +1451,56 @@ int main(int argc, char *args[]) {
                                     
                                 // } break;
                                 case ENTITY_TYPE_NOTE_PARENT: {
-                                    NoteParent *newEnt = (NoteParent *)getEmptyElement(&gameState->noteParentEnts);
-                                    initNoteParentEnt(&gameState->commons, newEnt, initPos, stevinusTex, gameState->ID++);
-                                    mostRecentParentNote = newEnt;
-                                    char *at = noteBuf;
-                                    while(*at) {
-                                        char value = *at - 48; //get value relative to 0
-                                        if(value < arrayCount(notes)) {
-                                            //get new note
-                                            Note *newNoteEnt = (Note *)getEmptyElement(&gameState->noteEnts);
-                                            //
+                                    if(noteBuf[0] != '\0') {
+                                        NoteParent *newEnt = (NoteParent *)getEmptyElement(&gameState->noteParentEnts);
+                                        initNoteParentEnt(&gameState->commons, newEnt, initPos, stevinusTex, gameState->ID++);
+                                        mostRecentParentNote = newEnt;
+                                        char *at = noteBuf;
+                                        while(*at) {
+                                            char value = *at - 48; //get value relative to 0
+                                            if(value < arrayCount(notes)) {
+                                                //get new note
+                                                Note *newNoteEnt = (Note *)getEmptyElement(&gameState->noteEnts);
+                                                //
 
-                                            NoteValue noteType = (NoteValue)value;
-                                            Asset *noteSound = notes[noteType];
+                                                NoteValue noteType = (NoteValue)value;
+                                                Asset *noteSound = notes[noteType];
 
-                                            int foo = newEnt->noteValueCount + 1;
-                                            int across = 4;
-                                            int x = foo % across;
-                                            int y = foo / across;
+                                                int foo = newEnt->noteValueCount + 1;
+                                                int across = 4;
+                                                int x = foo % across;
+                                                int y = foo / across;
 
-                                            V3 notePos = v3(initPos.x + x, initPos.y + y, initPos.z);
+                                                V3 notePos = v3(initPos.x + x, initPos.y + y, initPos.z);
 
-                                            initNoteEnt(&gameState->commons, newNoteEnt, notePos, noteTex, noteSound, gameState->ID++);
+                                                initNoteEnt(&gameState->commons, newNoteEnt, notePos, noteTex, noteSound, gameState->ID++);
 
-                                            newNoteEnt->parent = mostRecentParentNote;
-                                            assert(newNoteEnt->parent);
-                                            newNoteEnt->value = noteType;
-                                            newNoteEnt->e->shading = noteShades[noteType];
+                                                newNoteEnt->parent = mostRecentParentNote;
+                                                assert(newNoteEnt->parent);
+                                                newNoteEnt->value = noteType;
+                                                newNoteEnt->e->shading = noteShades[noteType];
 
-                                            addToUndoBufferIndex(&gameState->undoBuffer, CREATE_ENTITY, newNoteEnt->e);
+                                                addToUndoBufferIndex(&gameState->undoBuffer, CREATE_ENTITY, newNoteEnt->e);
 
-                                            newEnt->sequence[newEnt->noteValueCount++] = newNoteEnt;
-                                            
+                                                newEnt->sequence[newEnt->noteValueCount++] = newNoteEnt;
+                                                
+                                            }
+                                            at++;
                                         }
-                                        at++;
+
+                                        if(selectedEvent) {
+                                            // Event_EntCommonsInfo evComInfo = {};
+                                            // evComInfo.id = com->ID;
+                                            // evComInfo.pos = &com->pos;
+
+                                            newEnt->eventToTrigger = selectedEvent;//addV3PanEventWithOffset(&gameState->events, SMOOTH_STEP_01, EVENT_NULL_FLAG, v3(0.5f, 2, 0), 3, &evComInfo, gameState->eventID++);
+                                        }
+
+                                        addToUndoBufferIndex(&gameState->undoBuffer, CREATE_ENTITY, newEnt->e);
+                                    } else {
+                                        //TODO: Have the fade writing come up
+                                        printf("%s\n", "couldn't create note parent");
                                     }
-
-                                    if(selectedEvent) {
-                                        // Event_EntCommonsInfo evComInfo = {};
-                                        // evComInfo.id = com->ID;
-                                        // evComInfo.pos = &com->pos;
-
-                                        newEnt->eventToTrigger = selectedEvent;//addV3PanEventWithOffset(&gameState->events, SMOOTH_STEP_01, EVENT_NULL_FLAG, v3(0.5f, 2, 0), 3, &evComInfo, gameState->eventID++);
-                                    }
-
-                                    addToUndoBufferIndex(&gameState->undoBuffer, CREATE_ENTITY, newEnt->e);
 
                                 } break;
                                 case ENTITY_TYPE_SCENARIO: {
@@ -1753,7 +1767,12 @@ int main(int argc, char *args[]) {
                     if (ImGui::Button("OK", ImVec2(120,0))) { 
                         ImGui::CloseCurrentPopup(); 
                         char *exts[1] = {"txt"};
+                        char *copyDir1 = concat(globalExeBasePath, "levelsCopy/");
+                        char *copyDir = platformGetUniqueDirName(copyDir1);
+                        copyAllFilesOfType(dirName, copyDir, exts, arrayCount(exts));
                         deleteAllFilesOfType(dirName, exts, arrayCount(exts));
+                        free(copyDir);
+                        free(copyDir1);
                         callSaveWorld = true;
                     }
                     ImGui::SetItemDefaultFocus();
@@ -1796,7 +1815,11 @@ int main(int argc, char *args[]) {
                         EventListBoxInfo *ev = eventListBox + indexToAddTo;
                         ev->event = event;
                         ev->index = eventIndex;
-                        eventListBoxNames[indexToAddTo] = event->name;
+                        char *eventName = "(null)";
+                        if(strlen(event->name) > 0) {
+                            eventName = event->name;
+                        }
+                        eventListBoxNames[indexToAddTo] = eventName;
                     }
                 }
 
@@ -1830,6 +1853,7 @@ int main(int argc, char *args[]) {
                     ImGui::RadioButton("DIALOG", (int *)(&ev->type), (int)EVENT_DIALOG);         
                     ImGui::RadioButton("V3 PAN", (int *)(&ev->type), (int)EVENT_V3_PAN);         
                     ImGui::RadioButton("ACTIVATE ENTITY", (int *)(&ev->type), (int)EVENT_ENTITY_ACTIVE);         
+                    ImGui::RadioButton("EVENT_FADE_OUT", (int *)(&ev->type), (int)EVENT_FADE_OUT);         
 
                     if(ev->type == EVENT_DIALOG) {
                         ImGui::InputFloat("dialogTimerPeriod", &ev->dialogTimer.period);   
@@ -1838,6 +1862,8 @@ int main(int argc, char *args[]) {
                         //ev->lerpType;
                     } else if(ev->type == EVENT_ENTITY_ACTIVE) {
                       //nothing to put here  
+                    } else if(ev->type == EVENT_FADE_OUT) {
+                      ImGui::InputFloat("fadeTimer", &ev->fadeTimer.period);   
                     }
                 }
 
@@ -1978,7 +2004,7 @@ int main(int argc, char *args[]) {
 #endif
             
 #endif
-
+            } //This is if the playmode state is active
 #if MULTI_SAMPLE
             if (MultiSample) {
                         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);

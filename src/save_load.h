@@ -30,82 +30,83 @@ void addVar_(InfiniteAlloc *mem, void *val_, int count, char *varName, VarType t
     sprintf(data, "\t%s: ", varName);
     addElementInifinteAllocWithCount_(mem, data, strlen(data));
 
-    if(count > 1 && (type != VAR_CHAR_STAR || type != VAR_INT)) {
-        printf("%d\n", (int)type);
-        assert(!"array not handled yet");
-    }
-    switch(type) {
-        case VAR_CHAR_STAR: {
-            if(count == 1) {
-                char *val = (char *)val_;
-                sprintf(data, "\"%s\"", val);
-            } else {
-                assert(count > 1);
-                printf("isArray\n");
+    if(count > 0) {
+        if(count > 1 && !(type == VAR_CHAR_STAR || type == VAR_INT)) {
+            assert(!"array not handled yet");
+        }
+        switch(type) {
+            case VAR_CHAR_STAR: {
+                if(count == 1) {
+                    char *val = (char *)val_;
+                    sprintf(data, "\"%s\"", val);
+                } else {
+                    assert(count > 1);
+                    printf("isArray\n");
 
-                char **val = (char **)val_;
-                char *bracket = "[";
-                addElementInifinteAllocWithCount_(mem, bracket, 1);
-                for(int i = 0; i < count; ++i) {
-                    printf("%s\n", val[i]);
-                    sprintf(data, "\"%s\"", val[i]);    
-                    addElementInifinteAllocWithCount_(mem, data, strlen(data));
-                    if(i != count - 1) {
-                        char *commaString = ", ";
-                        addElementInifinteAllocWithCount_(mem, commaString, 2);
+                    char **val = (char **)val_;
+                    char *bracket = "[";
+                    addElementInifinteAllocWithCount_(mem, bracket, 1);
+                    for(int i = 0; i < count; ++i) {
+                        printf("%s\n", val[i]);
+                        sprintf(data, "\"%s\"", val[i]);    
+                        addElementInifinteAllocWithCount_(mem, data, strlen(data));
+                        if(i != count - 1) {
+                            char *commaString = ", ";
+                            addElementInifinteAllocWithCount_(mem, commaString, 2);
+                        }
                     }
+                    bracket = "]";
+                    addElementInifinteAllocWithCount_(mem, bracket, 1);
+                    data[0] = 0; //clear data
+                    
                 }
-                bracket = "]";
-                addElementInifinteAllocWithCount_(mem, bracket, 1);
-                data[0] = 0; //clear data
-                
-            }
-        } break;
-        case VAR_LONG_INT: {
-            unsigned long *val = (unsigned long *)val_;
-            sprintf(data, "%ld", val[0]);
-        } break;
-        case VAR_INT: {
-            if(count == 1) {
-                int *val = (int *)val_;
-                sprintf(data, "%d", val[0]);
-            } else {
-                assert(count > 1);
+            } break;
+            case VAR_LONG_INT: {
+                unsigned long *val = (unsigned long *)val_;
+                sprintf(data, "%ld", val[0]);
+            } break;
+            case VAR_INT: {
+                if(count == 1) {
+                    int *val = (int *)val_;
+                    sprintf(data, "%d", val[0]);
+                } else {
+                    assert(count > 1);
 
-                int *val = (int *)val_;
-                char *bracket = "[";
-                addElementInifinteAllocWithCount_(mem, bracket, 1);
-                for(int i = 0; i < count; ++i) {
-                    sprintf(data, "%d", val[i]);    
-                    addElementInifinteAllocWithCount_(mem, data, strlen(data));
-                    if(i != count - 1) {
-                        char *commaString = ", ";
-                        addElementInifinteAllocWithCount_(mem, commaString, 2);
+                    int *val = (int *)val_;
+                    char *bracket = "[";
+                    addElementInifinteAllocWithCount_(mem, bracket, 1);
+                    for(int i = 0; i < count; ++i) {
+                        sprintf(data, "%d", val[i]);    
+                        addElementInifinteAllocWithCount_(mem, data, strlen(data));
+                        if(i != count - 1) {
+                            char *commaString = ", ";
+                            addElementInifinteAllocWithCount_(mem, commaString, 2);
+                        }
                     }
+                    bracket = "]";
+                    addElementInifinteAllocWithCount_(mem, bracket, 1);
+                    data[0] = 0; //clear data
                 }
-                bracket = "]";
-                addElementInifinteAllocWithCount_(mem, bracket, 1);
-                data[0] = 0; //clear data
-            }
-        } break;
-        case VAR_FLOAT: {
-            float *val = (float *)val_;
-            sprintf(data, "%f", val[0]);
-        } break;
-        case VAR_V2: {
-            float *val = (float *)val_;
-            sprintf(data, "%f %f", val[0], val[1]);
-        } break;
-        case VAR_V3: {
-            float *val = (float *)val_;
-            sprintf(data, "%f %f %f", val[0], val[1], val[2]);
-        } break;
-        case VAR_V4: {
-            float *val = (float *)val_;
-            sprintf(data, "%f %f %f %f", val[0], val[1], val[2], val[3]);
-        } break;
-        default: {
+            } break;
+            case VAR_FLOAT: {
+                float *val = (float *)val_;
+                sprintf(data, "%f", val[0]);
+            } break;
+            case VAR_V2: {
+                float *val = (float *)val_;
+                sprintf(data, "%f %f", val[0], val[1]);
+            } break;
+            case VAR_V3: {
+                float *val = (float *)val_;
+                sprintf(data, "%f %f %f", val[0], val[1], val[2]);
+            } break;
+            case VAR_V4: {
+                float *val = (float *)val_;
+                sprintf(data, "%f %f %f %f", val[0], val[1], val[2], val[3]);
+            } break;
+            default: {
 
+            }
         }
     }
     addElementInifinteAllocWithCount_(mem, data, strlen(data));
@@ -392,7 +393,12 @@ void saveWorld(GameState *gameState, char *dir, char *fileName) {
             
             if(ent->type == EVENT_DIALOG) {
                 addVar(&fileData.mem, &ent->dialogCount, "dialogCount", VAR_INT);
-                addVarArray(&fileData.mem, ent->dialog, ent->dialogCount, "dialog", VAR_CHAR_STAR);
+                for(int i = 0; i < ent->dialogCount; ++i) {
+                    printf("%s\n", ent->dialog[i]);
+                }
+                void *dialogArray = ent->dialog;
+                if(ent->dialogCount == 1) { dialogArray = ent->dialog[0]; } 
+                addVarArray(&fileData.mem, dialogArray, ent->dialogCount, "dialog", VAR_CHAR_STAR);
                 addVar(&fileData.mem, &ent->dialogTimer.period, "dialogTimerPeriod", VAR_FLOAT);
                 addVar(&fileData.mem, &ent->dialogDisplayValue, "dialogDisplayValue", VAR_FLOAT);
             } else if(ent->type == EVENT_V3_PAN) {
@@ -400,6 +406,8 @@ void saveWorld(GameState *gameState, char *dir, char *fileName) {
                 addVar(&fileData.mem, ent->lerpValueV3.b.E, "lerpB", VAR_V3);
                 addVar(&fileData.mem, &ent->entId, "lerpEntId", VAR_INT);
                 addVar(&fileData.mem, &ent->lerpValueV3.timer.period, "lerpTimerPeriod", VAR_FLOAT);
+            } else if(ent->type == EVENT_FADE_OUT) {
+                addVar(&fileData.mem, &ent->fadeTimer.period, "fadeTimerPeriod", VAR_FLOAT);
             }
             endDataType(&fileData.mem);
 
@@ -479,7 +487,7 @@ InfiniteAlloc getDataObjects(EasyTokenizer *tokenizer) {
     while(parsing) {
         char *at = tokenizer->src;
         EasyToken token = lexGetNextToken(tokenizer);
-        lexPrintToken(&token);
+        //lexPrintToken(&token);
         assert(at != tokenizer->src);
         switch(token.type) {
             case TOKEN_NULL_TERMINATOR: {
@@ -500,7 +508,6 @@ InfiniteAlloc getDataObjects(EasyTokenizer *tokenizer) {
                 data.type = VAR_INT;
                 char charBuffer[256] = {};
                 int value = atoi(nullTerminateBuffer(charBuffer, token.at, token.size));
-                printf("HEY A VALUE: %d\n", value);
                 int *var = &data.intVal;
                 *var = value;
                 addElementInifinteAlloc_(&types, &data);
@@ -712,7 +719,6 @@ void loadWorld(GameState *gameState, char *dir) {
                         entData.type = ENTITY_TYPE_EVENT;
                         entData.event = (Event *)getEmptyElement(&gameState->events);
                         setupEmptyEvent(entData.event);
-                        printf("%s\n", "foundEvent");
                     }
 
                     if(entData.type == ENTITY_TYPE_EVENT) {
@@ -783,6 +789,9 @@ void loadWorld(GameState *gameState, char *dir) {
                         }
                         if(stringsMatchNullN("dialogDisplayValue", token.at, token.size)) {
                             entData.event->dialogDisplayValue = getFloatFromDataObjects(&data, &tokenizer);
+                        }
+                        if(stringsMatchNullN("fadeTimerPeriod", token.at, token.size)) {
+                            entData.event->fadeTimer.period = getFloatFromDataObjects(&data, &tokenizer);
                         }
                         if(stringsMatchNullN("lerpType", token.at, token.size)) {
                             char *name = getStringFromDataObjects(&data, &tokenizer);
@@ -873,8 +882,6 @@ void loadWorld(GameState *gameState, char *dir) {
                         if(stringsMatchNullN("noteSequenceIds", token.at, token.size)) {
                             data = getDataObjects(&tokenizer);
                             DataObject *objs = (DataObject *)data.memory;
-                            printf("%d\n", entData.noteParent->noteValueCount);
-                            printf("data count: %d\n", data.count);
                             assert(entData.noteParent->noteValueCount == data.count || entData.noteParent->noteValueCount == 0);
                             for(int noteIndex = 0; noteIndex < data.count; noteIndex++) {
                                 assert(objs[noteIndex].type == VAR_INT);    
@@ -964,7 +971,6 @@ void loadWorld(GameState *gameState, char *dir) {
                         }
                         if(stringsMatchNullN("texture", token.at, token.size))  {
                             char *name = getStringFromDataObjects(&data, &tokenizer);
-                            printf("TEXTURE NAME:%s\n", name);
                             entData.commons->tex = findAsset(name);
                             assert(entData.commons->tex);
                         }

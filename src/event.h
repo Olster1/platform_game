@@ -4,6 +4,7 @@ typedef struct Asset Asset;
 FUNC(EVENT_DIALOG) \
 FUNC(EVENT_V3_PAN) \
 FUNC(EVENT_ENTITY_ACTIVE) \
+FUNC(EVENT_FADE_OUT) \
 
 typedef enum {
 	EVENT_TYPE(ENUM)
@@ -44,6 +45,9 @@ typedef struct Event {
 			LerpType lerpType;
 			LerpV3 lerpValueV3;
 
+		};
+		struct {
+			Timer fadeTimer;
 		};
 	};
 
@@ -98,6 +102,19 @@ Event *addDialogEvent(Array_Dynamic *events, Event_EntCommonsInfo *commonInfo, V
 	event->dialogDisplayValue = 0.3f;
 	event->flags |= flags;
 	setEventFlag(event, EVENT_FRESH);
+	return event;
+}
+
+Event *addFadeOutEvent(Array_Dynamic *events, unsigned int flags, int id) {
+	Event *event = (Event *)getEmptyElement(events);
+	memset(event, 0, sizeof(Event));
+	event->ID = id;
+	event->type = EVENT_FADE_OUT;
+	event->fadeTimer = initTimer(1);
+	event->flags |= flags;
+	setEventFlag(event, EVENT_FRESH);
+	unSetEventFlag(event, EVENT_TRIGGER);
+	unSetEventFlag(event, EVENT_EXPLICIT);
 	return event;
 }
 
