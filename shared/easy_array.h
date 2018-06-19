@@ -89,6 +89,14 @@ InfiniteAlloc initInfinteAlloc_(int sizeOfMember) {
 
 #define addElementInfinteAlloc(arena, data) assert(sizeof(data) == arena->sizeOfMember); addElementInfinteAlloc_(arena, (void *)&data)
 
+
+#define getElementFromAlloc(arena, index, type) (type *)getElementFromAlloc_(arena, index);
+void *getElementFromAlloc_(InfiniteAlloc *arena, int index)  {
+    assert(index >= 0 && index < arena->count); 
+    u8 *memAt = ((u8 *)arena->memory) + (arena->sizeOfMember*index);
+    return memAt;
+}
+
 void addElementInifinteAllocWithCount_(InfiniteAlloc *arena, void *data, int count) {
     expandMemoryArray_(arena, count);
     assert((arena->count + count) < arena->totalCount);

@@ -38,7 +38,7 @@ char *getFileExtension(char *fileName) {
     return result;
 }
 
-char *getFileLastPortion(char *at) {
+char *getFileLastPortion_(char *buffer, int bufferLen, char *at) {
     char *recent = at;
     while(*at) {
         if(*at == '/' && at[1] != '\0') { 
@@ -47,11 +47,38 @@ char *getFileLastPortion(char *at) {
         at++;
     }
     
+    char *result = buffer;
     int length = (int)(at - recent) + 1; //for null termination
+    if(!result) {
+        result = (char *)calloc(length, 1);    
+    } else {
+        assert(bufferLen >= length);
+        buffer[length] = '\0'; //null terminate. 
+    }
+    
+    memcpy(result, recent, length - 1);
+    
+    return result;
+}
+#define getFileLastPortion(at) getFileLastPortion_(0, 0, at)
+#define getFileLastPortionWithBuffer(buffer, bufferLen, at) getFileLastPortion_(buffer, bufferLen, at)
+
+char *getFileLastPortionWithoutExtension(char *name) {
+    char *lastPortion = getFileLastPortion(name);
+    char *at = lastPortion;
+    while(*at) {
+        if(*at == '.') { 
+            break;
+        }
+        at++;
+    }
+    
+    int length = (int)(at - lastPortion) + 1; //for null termination
     char *result = (char *)calloc(length, 1);
     
-    memcpy(result, recent, length);
-    
+    memcpy(result, lastPortion, length - 1 );
+
+    free(lastPortion);
     return result;
 }
 
@@ -69,90 +96,6 @@ bool isInCharList(char *ext, char **exts, int count) {
         }
     }
     return result;
-}
-
-typedef enum {
-    DIR_FIND_FILE_TYPE,
-    DIR_DELETE_FILE_TYPE,
-    DIR_FIND_DIR_TYPE,
-} DirTypeOperation;
-
-//TODO: can we make this into a multiple purpose function for deleting files etc.??
-FileNameOfType getDirectoryFilesOfType_(char *dirName, char **exts, int count, DirTypeOperation opType) { 
-    FileNameOfType fileNames = {};
-    #ifdef __APPLE__
-        DIR *directory = opendir(dirName);
-        if(directory) {
-
-            struct dirent *dp = 0;
-
-               do {
-                   dp = readdir(directory);
-                   if (dp) {
-                        char *fileName = concat(dirName, dp->d_name);
-                        char *ext = getFileExtension(fileName);
-                        switch(opType) {
-                            case DIR_FIND_FILE_TYPE: {
-                                if(isInCharList(ext, exts, count)) {
-                                    assert(fileNames.count < arrayCount(fileNames.names));
-                                    fileNames.names[fileNames.count++] = fileName;
-                                }
-                            } break;
-                            case DIR_DELETE_FILE_TYPE: {
-                                if(isInCharList(ext, exts, count)) {
-                                    remove(fileName);
-                                    free(fileName);
-                                }
-                            } break;
-                            case DIR_FIND_DIR_TYPE: {
-                                if(!ext) { //is folder
-                                    assert(fileNames.count < arrayCount(fileNames.names));
-                                    fileNames.names[fileNames.count++] = fileName;
-                                }
-                            } break;
-                        }
-                   }
-               } while (dp);
-            closedir(directory);
-        }
-    #else 
-        assert(!"not implemented");
-    #endif
-
-    return fileNames;
-}
-
-#define getDirectoryFilesOfType(dirName, exts, count) getDirectoryFilesOfType_(dirName, exts, count, DIR_FIND_FILE_TYPE)
-#define deleteAllFilesOfType(dirName, exts, count) getDirectoryFilesOfType_(dirName, exts, count, DIR_DELETE_FILE_TYPE)
-#define getDirectoryFolders(dirName) getDirectoryFilesOfType_(dirName, 0, 0, DIR_FIND_DIR_TYPE)
-
-void platformDeleteFile(char *fileName) {
-    if(remove(fileName) != 0) {
-        assert(!"couldn't delete file");
-    }
-}
-
-#include <errno.h>
-#include <sys/stat.h> //for mkdir S_IRWXU
-bool platformCreateDirectory(char *fileName) {
-
-    printf("%s\n", fileName);
-    bool result = false;
-    DIR* dir = opendir(fileName);
-    if (dir) {
-        closedir(dir);
-        printf("%s %s\n", "exists", fileName);
-    } else if (ENOENT == errno) {
-        printf("%s\n", "platformCreateDirectory dir");
-        if(mkdir(fileName, S_IRWXU) == -1) {
-            assert(!"couldn't create directory");
-        }
-        result = true;
-    } else {
-        assert(!"something went wrong");
-    }
-    return result;
-
 }
 
 typedef struct {
@@ -334,3 +277,126 @@ static inline FileContents getFileContents(char *fileName) {
     FileContents result = platformReadEntireFile(fileName, false);
     return result;
 }
+
+void platformDeleteFile(char *fileName) {
+    if(remove(fileName) != 0) {
+        assert(!"couldn't delete file");
+    }
+}
+
+#include <errno.h>
+#include <sys/stat.h> //for mkdir S_IRWXU
+bool platformCreateDirectory(char *fileName) {
+    bool result = false;
+    DIR* dir = opendir(fileName);
+    if (dir) {
+        closedir(dir);
+    } else if (ENOENT == errno) {
+        if(mkdir(fileName, S_IRWXU) == -1) {
+            assert(!"couldn't create directory");
+        }
+        result = true;
+    } else {
+        assert(!"something went wrong");
+    }
+    return result;
+
+}
+
+typedef enum {
+    DIR_FIND_FILE_TYPE,
+    DIR_DELETE_FILE_TYPE,
+    DIR_FIND_DIR_TYPE,
+    DIR_COPY_FILE_TYPE,
+} DirTypeOperation;
+
+char *platformGetUniqueDirName(char *dirName) {
+    char timeStampBuffer[256] = {};
+    sprintf(timeStampBuffer, "%lu/", (unsigned long)time(NULL)); 
+    char *newDirName = concat(dirName, timeStampBuffer);
+    return newDirName;
+}
+
+//Creates last folder if doesn't exist, but note recursive
+void platformCopyFile(char *fileName, char *copyDir) {
+    FileContents contents = platformReadEntireFile(fileName, false);
+    assert(contents.valid);
+    
+    platformCreateDirectory(copyDir);
+    {
+        char *lastPortion = getFileLastPortionWithoutExtension(fileName);
+        char *extension = getFileExtension(fileName);
+        char *copyName = concat(copyDir, lastPortion);
+        char *copyName1 = concat(copyName, "_copy.");
+        char *copyName2 = concat(copyName1, extension);
+
+        game_file_handle handle = platformBeginFileWrite(copyName2);
+        platformWriteFile(&handle, contents.memory, contents.fileSize, 0);
+        platformEndFile(handle);
+
+        assert(!handle.HasErrors);
+
+        free(copyName);
+        free(copyName1);
+        free(copyName2);
+        free(lastPortion);
+        
+    } 
+
+}
+
+//TODO: can we make this into a multiple purpose function for deleting files etc.??
+FileNameOfType getDirectoryFilesOfType_(char *dirName, char *copyDir, char **exts, int count, DirTypeOperation opType) { 
+    FileNameOfType fileNames = {};
+    #ifdef __APPLE__
+        DIR *directory = opendir(dirName);
+        if(directory) {
+
+            struct dirent *dp = 0;
+
+               do {
+                   dp = readdir(directory);
+                   if (dp) {
+                        char *fileName = concat(dirName, dp->d_name);
+                        char *ext = getFileExtension(fileName);
+                        switch(opType) {
+                            case DIR_FIND_FILE_TYPE: {
+                                if(isInCharList(ext, exts, count)) {
+                                    assert(fileNames.count < arrayCount(fileNames.names));
+                                    fileNames.names[fileNames.count++] = fileName;
+                                }
+                            } break;
+                            case DIR_DELETE_FILE_TYPE: {
+                                if(isInCharList(ext, exts, count)) {
+                                    remove(fileName);
+                                    free(fileName);
+                                }
+                            } break;
+                            case DIR_FIND_DIR_TYPE: {
+                                if(!ext) { //is folder
+                                    assert(fileNames.count < arrayCount(fileNames.names));
+                                    fileNames.names[fileNames.count++] = fileName;
+                                }
+                            } break;
+                            case DIR_COPY_FILE_TYPE: {
+                                if(isInCharList(ext, exts, count)) {
+                                    platformCopyFile(fileName, copyDir);
+                                    free(fileName);
+                                }
+                            } break;
+                        }
+                   }
+               } while (dp);
+            closedir(directory);
+        }
+    #else 
+        assert(!"not implemented");
+    #endif
+
+    return fileNames;
+}
+
+#define getDirectoryFilesOfType(dirName, exts, count) getDirectoryFilesOfType_(dirName, 0, exts, count, DIR_FIND_FILE_TYPE)
+#define deleteAllFilesOfType(dirName, exts, count) getDirectoryFilesOfType_(dirName, 0, exts, count, DIR_DELETE_FILE_TYPE)
+#define copyAllFilesOfType(dirName, copyDir, exts, count) getDirectoryFilesOfType_(dirName, copyDir, exts, count, DIR_COPY_FILE_TYPE)
+#define getDirectoryFolders(dirName) getDirectoryFilesOfType_(dirName, 0, 0, 0, DIR_FIND_DIR_TYPE)

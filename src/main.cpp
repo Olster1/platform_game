@@ -282,14 +282,16 @@ int main(int argc, char *args[]) {
         Asset *backgroundMusic2 = loadSoundAsset((concat(globalExeBasePath,(char *)"Chill Major.wav")), &audioSpec);
         Asset *backgroundMusic3 = loadSoundAsset((concat(globalExeBasePath,(char *)"c_pad.wav")), &audioSpec);
         
-        PlayingSound *firstSound = playSound(&arena, getSoundAsset(backgroundMusic3), 0, AUDIO_BACKGROUND);
+        PlayingSound *firstSound = playGameSound(&arena, getSoundAsset(backgroundMusic3), 0, AUDIO_BACKGROUND);
         firstSound->nextSound = firstSound;
 
-        // PlayingSound *secondSound = pushSound(&arena, getSoundAsset(backgroundMusic2), secondSound);
+        playMenuSound(&arena, getSoundAsset(backgroundSound), 0, AUDIO_BACKGROUND);
+
+        // PlayingSound *secondSound = pushGameSound(&arena, getSoundAsset(backgroundMusic2), secondSound);
         // firstSound->nextSound = secondSound;
         // secondSound->nextSound = firstSound;
         
-        // playSound(&arena, &backgroundSound, true);
+        // playGameSound(&arena, &backgroundSound, true);
         
         Asset *jumpSound = loadSoundAsset((concat(globalExeBasePath,(char *)"Bottle_Cork.wav")), &audioSpec);
 
@@ -399,7 +401,7 @@ int main(int argc, char *args[]) {
 #endif
         
         FrameBuffer compositedBufferMultiSampled = createFrameBufferMultiSample(bufferWidth, bufferWidth, true, 2); 
-        //FrameBuffer compositedBuffer = createFrameBuffer(tileWidth, tileHeight, true); 
+        FrameBuffer finalCompositedBuffer = createFrameBuffer(bufferWidth, bufferHeight, true); 
         
         V2 middleP = v2(0.5f*bufferWidth, 0.5f*bufferHeight);
         
@@ -450,22 +452,18 @@ int main(int argc, char *args[]) {
         turnTimerOff(&lastNoteTimer);
 
         char *loadDir = concat(globalExeBasePath, "levels/");
+        char *loadProgressDir = concat(globalExeBasePath, "progress/");
 
-        FileNameOfType folderFileNames = getDirectoryFolders(loadDir);
-        if(folderFileNames.count) {
-            char *folderName = folderFileNames.names[0];
-            char *levelName = concat(folderName, "/");
-            loadWorld(gameState, levelName);
-
-        }
-
-        freeFolderNames(&folderFileNames);
+        loadLevelFromFile(gameState, loadDir, "level1");
 
         MenuInfo menuInfo = {};
         menuInfo.font = &mainFontLarge;
         menuInfo.windowHandle = windowHandle;
         menuInfo.running = &running;
         menuInfo.lastMode = menuInfo.gameMode = MENU_MODE;
+
+        setSoundType(AUDIO_FLAG_MENU);
+        assert(isSoundTypeSet(AUDIO_FLAG_MENU));
         
         while(running) {
             testInt = 0;
@@ -597,13 +595,14 @@ int main(int argc, char *args[]) {
 
             //////CLEAR BUFFERS 
             clearBufferAndBind(0, COLOR_PINK);
+            clearBufferAndBind(finalCompositedBuffer.bufferId, COLOR_PINK);
 #define MULTI_SAMPLE 1
 #if MULTI_SAMPLE
             if (MultiSample) {
                 clearBufferAndBind(compositedBufferMultiSampled.bufferId, COLOR_PINK); 
             }
 #endif
-            if(drawMenu(&menuInfo, gameButtons, getTextureAsset(skyTex))) {
+            if(drawMenu(gameState, loadProgressDir, &menuInfo, gameButtons, getTextureAsset(skyTex))) {
             
 
             glDisable(GL_DEPTH_TEST);
@@ -654,6 +653,7 @@ int main(int argc, char *args[]) {
             //TODO: Move to array so there can be more than one current event at a time. 
                 if(currentEvent) {
                     Event *lastEvent = currentEvent;
+                    //NOTE: We move to the next event ourselves in each case. So beaware when that happens...
                     switch(currentEvent->type) {
                         case EVENT_V3_PAN: {             
                             if(isEventFlagSet(currentEvent, EVENT_FRESH)) {           
@@ -666,6 +666,12 @@ int main(int argc, char *args[]) {
                             if(!isOn(&currentEvent->lerpValueV3.timer)) {
                                 currentEvent = currentEvent->nextEvent;
                             }
+                        } break;
+                        case EVENT_LOAD_LEVEL: {
+                            assert(currentEvent->levelName);
+                            loadLevelFromFile(gameState, loadDir, currentEvent->levelName);
+                            currentEvent = currentEvent->nextEvent;
+                            showPuzzleProgress = 0;
                         } break;
                         case EVENT_DIALOG: {
                             if(isEventFlagSet(currentEvent, EVENT_FRESH)) {           
@@ -887,7 +893,7 @@ int main(int argc, char *args[]) {
                 door = door->partner;
                 assert(door);
                 gameState->player->e->pos = door->e->pos;
-                playSound(&arena, getSoundAsset(doorSound), 0, AUDIO_FOREGROUND);
+                playGameSound(&arena, getSoundAsset(doorSound), 0, AUDIO_FOREGROUND);
             }
             gameState->player->lastDoor = door;    
             /////////////////
@@ -917,7 +923,7 @@ int main(int argc, char *args[]) {
                         
                         playingParentNote->soundTimer = initTimer(nextSoundPer);
                         Asset *soundToPlay = notes[playingParentNote->sequence[0]->value];
-                        playSound(&arena, getSoundAsset(soundToPlay), 0, AUDIO_FOREGROUND);
+                        playGameSound(&arena, getSoundAsset(soundToPlay), 0, AUDIO_FOREGROUND);
                         setChannelVolume(AUDIO_BACKGROUND, LOW_VOLUME, 0.5f);
                         Reactivate(&playingParentNote->e->particleSystem);
                         playingParentNote->e->shading = shadeColorForBlock;
@@ -951,7 +957,7 @@ int main(int argc, char *args[]) {
                         setLerpInfoV4_s(&playingParentNote->shadingLerp, COLOR_WHITE, nextSoundPer, &playingParentNote->e->shading);
 
                         Asset *soundToPlay = notes[playingParentNote->sequence[playingParentNote->soundAt++]->value];
-                        playSound(&arena, getSoundAsset(soundToPlay), 0, AUDIO_FOREGROUND);
+                        playGameSound(&arena, getSoundAsset(soundToPlay), 0, AUDIO_FOREGROUND);
                         Reactivate(&playingParentNote->e->particleSystem);
                     }
                 }
@@ -993,7 +999,7 @@ int main(int argc, char *args[]) {
 
                 addValueToNoteParent(parent, note->value);
             
-                playSound(&arena, getSoundAsset(note->sound), 0, AUDIO_FOREGROUND);
+                playGameSound(&arena, getSoundAsset(note->sound), 0, AUDIO_FOREGROUND);
                 showPuzzleProgress = note->parent;
 
                 assert(parent->valueCount);
@@ -1031,7 +1037,7 @@ int main(int argc, char *args[]) {
                         parent->valueAt = 0;
                         parent->valueCount = 0;
                         assert(parent->valueCount == 0);
-                        playSound(&arena, getSoundAsset(solvedPuzzleSound), 0, AUDIO_FOREGROUND);
+                        playGameSound(&arena, getSoundAsset(solvedPuzzleSound), 0, AUDIO_FOREGROUND);
                         Reactivate(&parent->e->particleSystem);
                         assert(!currentEvent);
                         if(parent->eventToTrigger && !parent->solved) {
@@ -1076,7 +1082,7 @@ int main(int argc, char *args[]) {
                     onPlatform = true;
                 } 
                 if(inputAccel.y > 0) { //player wants to jump 
-                    playSound(&arena, getSoundAsset(jumpSound), 0, AUDIO_FOREGROUND);
+                    playGameSound(&arena, getSoundAsset(jumpSound), 0, AUDIO_FOREGROUND);
                 }
             } else {
                 //stop the player from jumping if it isn't grounded. 
@@ -1367,8 +1373,16 @@ int main(int argc, char *args[]) {
                 float value = (float)parent->sequence[noteIndex]->value / (float)NOTE_COUNT;
                 float yAt = lerp(yAtMin, value, yAtMax);
                 xAt += widthPerNote;
+
+                // if (parent->noteIndex) {
+
+                // } else {
+
+                // }
+                V4 color = COLOR_RED;
                 //TODO: change this to the pushRect system!!!
-                openGlDrawRectCenterDim(v3(xAt, yAt, -1), v2(10, 10), COLOR_RED, 0, mat4TopLeftToBottomLeft(bufferHeight), 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1));
+                openGlDrawCircle(v3(xAt, yAt, -1), v2(30, 30), color, mat4TopLeftToBottomLeft(bufferHeight), 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1));
+                //openGlDrawRectCenterDim(, COLOR_RED, 0, mat4TopLeftToBottomLeft(bufferHeight), 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1));
             }
         }
         //  
@@ -1414,6 +1428,11 @@ int main(int argc, char *args[]) {
                                 case ENTITY_TYPE_ENTITY: {
                                     Entity *newEnt = (Entity *)getEmptyElement(&gameState->entities);
                                     initEntity(&gameState->commons, newEnt, initPos, crateTex, 1, gameState->ID++);
+                                    addToUndoBufferIndex(&gameState->undoBuffer, CREATE_ENTITY, newEnt->e);
+                                } break;
+                                case ENTITY_TYPE_LIGHT: {
+                                    Light *newEnt = (Light *)getEmptyElement(&gameState->lights);
+                                    initLight(&gameState->commons, newEnt, initPos, 10, gameState->ID++);
                                     addToUndoBufferIndex(&gameState->undoBuffer, CREATE_ENTITY, newEnt->e);
                                 } break;
                                 case ENTITY_TYPE_COLLISION: {
@@ -2007,16 +2026,37 @@ int main(int argc, char *args[]) {
             } //This is if the playmode state is active
 #if MULTI_SAMPLE
             if (MultiSample) {
-                        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-                        glCheckError();
-                        glBindFramebuffer(GL_READ_FRAMEBUFFER, compositedBufferMultiSampled.bufferId); 
-                        glCheckError();
-                        glBlitFramebuffer(0, 0, bufferWidth, bufferHeight, 0, 0, bufferWidth, bufferHeight, GL_COLOR_BUFFER_BIT, GL_LINEAR);
-                        glCheckError();
+                glBindFramebuffer(GL_DRAW_FRAMEBUFFER, finalCompositedBuffer.bufferId);
+                glCheckError();
+                glBindFramebuffer(GL_READ_FRAMEBUFFER, compositedBufferMultiSampled.bufferId); 
+                glCheckError();
+                glBlitFramebuffer(0, 0, bufferWidth, bufferHeight, 0, 0, bufferWidth, bufferHeight, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+                glCheckError();
             }
                         ///
 #endif      
-                        glBindFramebuffer(GL_FRAMEBUFFER, 0); //back to screen buffer
+#if 0            
+            //Do post fx here
+            glBindFramebuffer(GL_FRAMEBUFFER, 0); //back to screen buffer
+            V2 screenDim = v2(bufferWidth, bufferHeight);
+            V3 blitPos = v2ToV3(v2_scale(0.5f, screenDim), -1);
+
+            V4 colors[4] = {COLOR_WHITE, COLOR_WHITE, COLOR_WHITE, COLOR_WHITE}; 
+            openGlDrawRectCenterDim_(blitPos, screenDim, colors, 0, mat4(), finalCompositedBuffer.textureId, SHAPE_TEXTURE, textureProgram.glProgram, 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1));
+
+#else 
+//Just blit the texture instead of blending with shader. 
+
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+            glCheckError();
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, finalCompositedBuffer.bufferId); 
+            glCheckError();
+            glBlitFramebuffer(0, 0, bufferWidth, bufferHeight, 0, 0, bufferWidth, bufferHeight, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+            glCheckError();
+            glBindFramebuffer(GL_FRAMEBUFFER, 0); //back to screen buffer
+#endif
+
+            
 #if IMGUI_ON
             ImGui::Render();
             ImGui_ImplSdlGL3_RenderDrawData(ImGui::GetDrawData());

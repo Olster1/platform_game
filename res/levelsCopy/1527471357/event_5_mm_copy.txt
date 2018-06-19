@@ -1,0 +1,10 @@
+Event: {
+	ID: 5;
+	type: "EVENT_FADE_OUT";
+	name: "End level fade out";
+	entId: 0;
+	dim: 0.000000 0.000000 0.000000;
+	flags: 0;
+	fadeTimerPeriod: 3.000000;
+
+}

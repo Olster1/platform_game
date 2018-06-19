@@ -44,7 +44,10 @@ void renderMenu(GLuint backgroundTexId, MenuOptions *menuOptions, MenuInfo *info
     
     char *titleAt = menuOptions->options[info->menuCursorAt];
     
-    //openGlTextureCentreDim(backgroundTexId, v2(0.5f*bufferWidth, 0.5f*bufferHeight), v2(bufferWidth, bufferHeight), v4(1, 1, 1, 1), 0, mat4());
+    glDisable(GL_DEPTH_TEST);
+    openGlTextureCentreDim(backgroundTexId, v3(0.5f*bufferWidth, 0.5f*bufferHeight, -1), v2(bufferWidth, bufferHeight), COLOR_WHITE, 0, mat4(), 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1));
+    glEnable(GL_DEPTH_TEST);
+
     float yIncrement = bufferHeight / (menuOptions->count + 1);
     Rect2f menuMargin = rect2f(0, 0, bufferWidth, bufferHeight);
     
@@ -66,7 +69,7 @@ void renderMenu(GLuint backgroundTexId, MenuOptions *menuOptions, MenuInfo *info
     }
 }
 
-bool drawMenu(MenuInfo *info, GameButton *gameButtons, Texture *backgroundTex) {
+bool drawMenu(GameState *gameState, char *loadDir, MenuInfo *info, GameButton *gameButtons, Texture *backgroundTex) {
     bool isPlayMode = false;
     MenuOptions menuOptions = {};
 
@@ -80,21 +83,43 @@ bool drawMenu(MenuInfo *info, GameButton *gameButtons, Texture *backgroundTex) {
         }
     }
 
+    InfiniteAlloc tempTitles = initInfinteAlloc(char *);
+
     switch(info->gameMode) {
         case LOAD_MODE:{
+            FileNameOfType folderFileNames = getDirectoryFolders(loadDir);
+            for(int folderIndex = 0; folderIndex < folderFileNames.count; folderIndex++) {
+                char *folderName = folderFileNames.names[folderIndex];
+                char *title = getFileLastPortion(folderName);
+                addElementInifinteAlloc_(&tempTitles, &title);
+                assert(tempTitles.count > 0);
+                char **titlePtr = getElementFromAlloc(&tempTitles, folderIndex, char *);
+                assert(titlePtr[0]);
+                menuOptions.options[menuOptions.count++] = titlePtr[0]; 
+                free(folderName);
+            }
+
             menuOptions.options[menuOptions.count++] = "Go Back";
             
             updateMenu(&menuOptions, gameButtons, info);
             
             if(wasPressed(gameButtons, BUTTON_ENTER)) {
-                switch (info->menuCursorAt) {
-                    case 0: {
-                        info->gameMode = info->lastMode;
-                        info->menuCursorAt = 0;
-                    } break;
-                }
+            
+                if (info->menuCursorAt == menuOptions.count - 1) {
+                    info->gameMode = info->lastMode;
+                    info->menuCursorAt = 0;
+                } else {
+                    assert(info->menuCursorAt >= 0 && info->menuCursorAt < (menuOptions.count - 1));
+                    char **toLoad = getElementFromAlloc(&tempTitles, info->menuCursorAt, char *);
+
+                    loadLevelFromFile(gameState, loadDir, toLoad[0]);
+                    info->gameMode = info->lastMode;
+                    info->menuCursorAt = 0;
+                } 
+                
                 info->lastMode = LOAD_MODE;
             }
+            
         } break;
         case QUIT_MODE:{
             menuOptions.options[menuOptions.count++] = "Really Quit?";
@@ -144,8 +169,15 @@ bool drawMenu(MenuInfo *info, GameButton *gameButtons, Texture *backgroundTex) {
             if(wasPressed(gameButtons, BUTTON_ENTER)) {
                 switch (info->menuCursorAt) {
                     case 0: {
-                        //savePlayerData(table, "playerData.txt", currentGameState);
-                        //saveProgress(gameState, char *dir, char *fileName);
+                        char *dirName0 = concat(globalExeBasePath, "progress/");
+                        char *dirName1 = platformGetUniqueDirName(dirName0);
+                        bool createdDirectory = platformCreateDirectory(dirName1);
+                        //NOTE: we can do this since we are using time stamps. If we change to overwritting exisiting files we will fail. 
+                        assert(createdDirectory);
+                        saveWorld(gameState, dirName1, "player_progress.txt");
+
+                        free(dirName1);
+                        free(dirName0);
                     } break;
                     case 1: {
                         info->gameMode = info->lastMode;
@@ -245,12 +277,20 @@ bool drawMenu(MenuInfo *info, GameButton *gameButtons, Texture *backgroundTex) {
         } break;
         case PLAY_MODE: {
             isPlayMode = true;
+            setSoundType(AUDIO_FLAG_MAIN);
         } break;
     } 
 
     if(!isPlayMode) {
         renderMenu(backgroundTex->id, &menuOptions, info);
+        setSoundType(AUDIO_FLAG_MENU);
     }
+
+    for(int i = 0; i < tempTitles.count; ++i) {
+        char **titlePtr = getElementFromAlloc(&tempTitles, i, char *);
+        free(*titlePtr);
+    }
+    releaseInfiniteAlloc(&tempTitles);
 
     return isPlayMode;
 }

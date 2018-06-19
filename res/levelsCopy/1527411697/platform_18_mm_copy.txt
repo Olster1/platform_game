@@ -1,0 +1,21 @@
+Platform: {
+	centerPoint: 0.000000 0.000000 0.000000;
+	platformType: "PLATFORM_LINEAR_X";
+
+}
+Commons: {
+	id: 18;
+	name: "(null)";
+	flags: 153;
+	type: "ENT_TYPE_PLATFORM";
+	position: 13.117064 3.522091 -1.000000;
+	velocity: -0.833333 0.000000 0.000000;
+	renderPosOffset: 0.000000 0.000000 0.000000;
+	dim: 4.000000 1.000000 1.000000;
+	renderScale: 1.000000 1.000000 1.000000;
+	shading: 1.000000 1.000000 1.000000 1.000000;
+	texture: "moss_block1.bmp";
+	inverseWeight: 0.000100;
+	angle: 0.000000;
+
+}

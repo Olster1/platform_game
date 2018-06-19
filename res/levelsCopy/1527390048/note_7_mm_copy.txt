@@ -1,0 +1,22 @@
+Note: {
+	sound: "g_note.wav";
+	noteValue: "G_NOTE";
+	parentID: 6;
+
+}
+Commons: {
+	id: 7;
+	name: "(null)";
+	flags: 177;
+	type: "ENT_TYPE_DEFAULT";
+	position: -0.292531 2.173372 -1.000000;
+	velocity: 0.000000 0.000000 0.000000;
+	renderPosOffset: 0.000000 -0.112664 0.000000;
+	dim: 1.000000 1.000000 1.000000;
+	renderScale: 1.000000 1.000000 1.000000;
+	shading: 0.000000 0.000000 1.000000 1.000000;
+	texture: "MusicalNote.png";
+	inverseWeight: 0.000000;
+	angle: 0.000000;
+
+}

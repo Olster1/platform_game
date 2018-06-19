@@ -5,6 +5,7 @@ FUNC(EVENT_DIALOG) \
 FUNC(EVENT_V3_PAN) \
 FUNC(EVENT_ENTITY_ACTIVE) \
 FUNC(EVENT_FADE_OUT) \
+FUNC(EVENT_LOAD_LEVEL) \
 
 typedef enum {
 	EVENT_TYPE(ENUM)
@@ -48,6 +49,9 @@ typedef struct Event {
 		};
 		struct {
 			Timer fadeTimer;
+		};
+		struct {
+			char levelName[256];
 		};
 	};
 

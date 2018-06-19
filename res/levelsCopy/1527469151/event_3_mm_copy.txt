@@ -1,0 +1,13 @@
+Event: {
+	ID: 3;
+	type: "EVENT_V3_PAN";
+	name: "BlockPassageWay";
+	entId: 10;
+	dim: 0.000000 0.000000 0.000000;
+	flags: 0;
+	lerpType: "SMOOTH_STEP_01";
+	lerpB: 2.500000 6.000000 -1.000000;
+	lerpEntId: 10;
+	lerpTimerPeriod: 0.000000;
+
+}

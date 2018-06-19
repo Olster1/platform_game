@@ -38,6 +38,7 @@ GlProgram rectangleProgram;
 GlProgram rectangleNoGradProgram;
 GlProgram textureProgram;
 GlProgram circleProgram;
+GlProgram filterProgram;
 
 FileContents loadShader(char *fileName) {
     FileContents fileContents = getFileContentsNullTerminate(fileName);
@@ -246,6 +247,7 @@ void enableOpenGl(int width, int height) {
     char *fragShaderTex = concat(append, (char *)"fragment_shader_texture.glsl");
     char *fragShaderCirle = concat(append, (char *)"fragment_shader_circle.glsl");
     char *fragShaderRectNoGrad = concat(append, (char *)"fragment_shader_rectangle_noGrad.glsl");
+    char *fragShaderFilter = concat(append, (char *)"fragment_shader_texture_filter.glsl");
     
     rectangleNoGradProgram  = createProgramFromFile(vertShaderRect, fragShaderRectNoGrad);
     glCheckError();
@@ -257,6 +259,9 @@ void enableOpenGl(int width, int height) {
     glCheckError();
     
     textureProgram = createProgramFromFile(vertShaderTex, fragShaderTex);
+    glCheckError();
+
+    filterProgram = createProgramFromFile(vertShaderTex, fragShaderFilter);
     glCheckError();
     
     circleProgram = createProgramFromFile(vertShaderRect, fragShaderCirle);

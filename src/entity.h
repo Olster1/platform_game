@@ -10,6 +10,7 @@ typedef enum {
     ENTITY_TYPE_COMMONS,
     ENTITY_TYPE_SCENARIO,
     ENTITY_TYPE_EVENT,
+    ENTITY_TYPE_LIGHT,
     ENTITY_TYPE_CAMERA
 } EntType;
 
@@ -129,6 +130,12 @@ typedef struct Note {
 	NoteParent *parent;
 } Note;
 
+//TODO: look up flux shaders. 
+typedef struct {
+	float flux;
+	Entity_Commons *e;
+} Light;
+
 #define MAX_NOTE_SEQUENCE_SIZE 16
 typedef struct NoteParent{
 	Entity_Commons *e;
@@ -200,8 +207,6 @@ typedef enum {
 	ENTITY_COLLIDES_WITH_PLAYER = 1 << 7,
 	ENTITY_CAMERA = 1 << 8,
 } EntityFlag;
-
-
 
 bool isFlagSet_(unsigned long flags, EntityFlag flag) {
 	bool result = flags & flag;
@@ -398,6 +403,25 @@ void initNoteParentEnt(Array_Dynamic *commons_, NoteParent *entity, V3 pos, Asse
 	unSetFlag(entity->e, ENTITY_COLLIDES);
 
 	setupNoteParent(entity, 0);
+}
+
+void setupLight(Light *entity, Entity_Commons *common) {
+	if(common) {
+		entity->e = common;
+		setupEntityCommons(common, entity, ENTITY_TYPE_LIGHT);
+	}
+}
+
+void initLight(Array_Dynamic *commons_, Light *entity, V3 pos, float flux, int ID) {
+	memset(entity, 0, sizeof(Light)); //clear entity to null
+	entity->e = initEntityCommons(entity, commons_, pos, 0, 0, ID, ENTITY_TYPE_LIGHT);
+	entity->e->type = ENT_TYPE_DEFAULT;
+	unSetFlag(entity->e, ENTITY_COLLIDES);
+	unSetFlag(entity->e, ENTITY_GRAVITY_AFFECTED);
+
+	setupLight(entity, 0);
+
+	entity->flux = flux;
 }
 
 void addDialog(Event *event, char *dialog) {

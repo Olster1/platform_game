@@ -5,6 +5,12 @@ typedef SDL_AUDIO_CALLBACK(sdl_audio_callback);
 #define AUDIO_MONO 1
 #define AUDIO_STEREO 2
 
+typedef enum {
+    AUDIO_FLAG_NULL,
+    AUDIO_FLAG_MENU,
+    AUDIO_FLAG_MAIN,
+} SoundType;
+
 typedef struct {
     unsigned int size;
     unsigned char *data;
@@ -26,7 +32,6 @@ typedef enum {
     AUDIO_CHANNEL_COUNT
 } AudioChannel;
 
-
 #define LOW_VOLUME 32
 #define MIDDLE_VOLUME 64
 #define MAX_VOLUME 64
@@ -44,7 +49,16 @@ typedef struct {
 
 static int channelVolumes_[AUDIO_CHANNEL_COUNT] = {MAX_VOLUME, MAX_VOLUME};
 static VolumeLerp channelVolumesLerps_[AUDIO_CHANNEL_COUNT] = {};
+static SoundType globalSoundActiveType_ = AUDIO_FLAG_NULL;
 
+bool isSoundTypeSet(SoundType type) {
+    bool result = (globalSoundActiveType_ == type);
+    return result;
+}
+
+void setSoundType(SoundType type) {
+    globalSoundActiveType_ = type;
+}
 
 void setChannelVolume(AudioChannel channel, int targetVolume, float period) {
     VolumeLerp *lerpValue = channelVolumesLerps_ + channel;
@@ -82,6 +96,7 @@ typedef struct PlayingSound {
 
     bool active;
     AudioChannel channel;
+    SoundType soundType;
     
     PlayingSound *nextSound;
     
@@ -188,6 +203,7 @@ PlayingSound *playSound(Arena *arena, WavFile *wavFile, PlayingSound *nextSoundT
     result->nextSound = nextSoundToPlay;
     result->bytesAt = 0;
     result->wavFile = wavFile;
+
     return result;
 }
 
@@ -197,6 +213,34 @@ PlayingSound *pushSound(Arena *arena, WavFile *wavFile, PlayingSound *nextSoundT
     result->active = false;
     return result;
 }
+
+PlayingSound *playMenuSound(Arena *arena, WavFile *wavFile, PlayingSound *nextSoundToPlay, AudioChannel channel) {
+    PlayingSound *result = playSound(arena, wavFile, nextSoundToPlay, channel);
+    result->soundType = AUDIO_FLAG_MENU;
+    return result;
+}
+
+//This call is for setting a sound up but not playing it. 
+PlayingSound *pushMenuSound(Arena *arena, WavFile *wavFile, PlayingSound *nextSoundToPlay, AudioChannel channel) {
+    PlayingSound *result = pushSound(arena, wavFile, nextSoundToPlay, channel);
+    result->soundType = AUDIO_FLAG_MENU;
+    return result;
+}
+
+//TODO: Change this to define staments
+PlayingSound *playGameSound(Arena *arena, WavFile *wavFile, PlayingSound *nextSoundToPlay, AudioChannel channel) {
+    PlayingSound *result = playSound(arena, wavFile, nextSoundToPlay, channel);
+    result->soundType = AUDIO_FLAG_MAIN;
+    return result;
+}
+
+PlayingSound *pushGameSound(Arena *arena, WavFile *wavFile, PlayingSound *nextSoundToPlay, AudioChannel channel) {
+    PlayingSound *result = pushSound(arena, wavFile, nextSoundToPlay, channel);
+    result->soundType = AUDIO_FLAG_MAIN;
+    return result;
+}
+
+///
 
 void loadWavFile(WavFile *result, char *fileName, SDL_AudioSpec *audioSpec) {
     int desiredChannels = audioSpec->channels;
@@ -276,7 +320,8 @@ SDL_AUDIO_CALLBACK(audioCallback) {
         ) {
         bool advancePtr = true;
         PlayingSound *sound = *soundPrt;
-        if(sound->active) {
+        bool isSoundType = isSoundTypeSet(sound->soundType);
+        if(sound->active && isSoundType) {
             unsigned char *samples = sound->wavFile->data + sound->bytesAt;
             int remainingBytes = sound->wavFile->size - sound->bytesAt;
             

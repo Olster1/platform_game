@@ -179,6 +179,7 @@ typedef enum {
     BUTTON_ESCAPE,
     BUTTON_LEFT_MOUSE,
     BUTTON_RIGHT_MOUSE,
+    BUTTON_1,
     //
     BUTTON_COUNT
 } ButtonType;

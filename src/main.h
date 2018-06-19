@@ -12,6 +12,7 @@ typedef struct {
     Array_Dynamic npcEntities;
     Array_Dynamic particleSystems;
     Array_Dynamic events;
+    Array_Dynamic lights;
 
     V2 mouseOffset;
     V2 interactStartingMouseP;

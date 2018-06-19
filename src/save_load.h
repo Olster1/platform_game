@@ -12,6 +12,7 @@ void initWorldDataArrays(GameState *gameState, bool clearArrays) {
     clearAndInitArray(&gameState->particleSystems, particle_system, clearArrays);
     clearAndInitArray(&gameState->npcEntities, NPC, clearArrays);
     clearAndInitArray(&gameState->events, Event, clearArrays);
+    clearAndInitArray(&gameState->lights, Light, clearArrays);
 }
 
 //TODO: THis file uses the the types from easy_timer.h. Use this enum instead of the timer ones!!
@@ -104,8 +105,13 @@ void addVar_(InfiniteAlloc *mem, void *val_, int count, char *varName, VarType t
                 float *val = (float *)val_;
                 sprintf(data, "%f %f %f %f", val[0], val[1], val[2], val[3]);
             } break;
+            case VAR_BOOL: {
+                bool *val = (bool *)val_;
+                const char *boolVal = val[0] ? "true" : "false";
+                sprintf(data, "%s", boolVal);
+            } break;
             default: {
-
+                printf("%s\n", "Error: case not handled in saving");
             }
         }
     }
@@ -184,6 +190,7 @@ EntFileData beginEntFileData(char *dirName, char *fileName_, char *entType, int 
 
     result.mem = initInfinteAlloc(char);
     result.fileHandle = platformBeginFileWrite(entFileName);
+    assert(!result.fileHandle.HasErrors);
     free(entName);
     free(entFileName);
     free(a);
@@ -196,58 +203,9 @@ void endEntFileData(EntFileData *data) {
     free(data->mem.memory);
 }
 
-void saveProgress(GameState *gameState, char *dir, char *fileName) {
-  for(int entIndex = 0; entIndex < gameState->noteParentEnts.count; entIndex++) {
-      NoteParent *ent = (NoteParent *)getElement(&gameState->noteParentEnts, entIndex);
-      if(ent && isFlagSet(ent->e, ENTITY_VALID)) {
-          EntFileData fileData = beginEntFileData(dir, fileName, "noteParent", ent->e->ID);
-
-          beginDataType(&fileData.mem, "NoteParent");
-          
-          addVar(&fileData.mem, &ent->solved, "solved", VAR_BOOL);
-
-          endDataType(&fileData.mem);
-
-          endEntFileData(&fileData);
-      }
-  }  
-  for(int entIndex = 0; entIndex < gameState->platformEnts.count; entIndex++) {
-      Entity *ent = (Entity *)getElement(&gameState->platformEnts, entIndex);
-      if(ent && isFlagSet(ent->e, ENTITY_VALID)) {
-          EntFileData fileData = beginEntFileData(dir, fileName, "platform", ent->e->ID);
-
-          beginDataType(&fileData.mem, "Platform");
-              addVar(&fileData.mem, ent->e->pos.E, "position", VAR_V3);
-              addVar(&fileData.mem, ent->e->dP.E, "velocity", VAR_V3);
-              addVar(&fileData.mem, &ent->e->flags, "flags", VAR_LONG_INT);
-          endDataType(&fileData.mem);
-          endEntFileData(&fileData);
-      }
-  }
-  {
-    Entity *player = gameState->player;
-      EntFileData fileData = beginEntFileData(dir, fileName, "player", player->e->ID);
-      beginDataType(&fileData.mem, "Player");
-        addVar(&fileData.mem, player->e->pos.E, "position", VAR_V3);
-      endDataType(&fileData.mem);
-      endEntFileData(&fileData);
-  }
-  {
-    Entity_Commons *camera = gameState->camera;
-      EntFileData fileData = beginEntFileData(dir, fileName, "camera", camera->ID);
-      beginDataType(&fileData.mem, "Camera");
-        addVar(&fileData.mem, camera->pos.E, "position", VAR_V3);
-      endDataType(&fileData.mem);
-      endEntFileData(&fileData);
-  }
-
-
-}
-
 void saveWorld(GameState *gameState, char *dir, char *fileName) {
     
     // initArray(&gameState->particleSystems, particle_system);
-
     for(int entIndex = 0; entIndex < gameState->npcEntities.count; entIndex++) {
         NPC *ent = (NPC *)getElement(&gameState->npcEntities, entIndex);
         if(ent && isFlagSet(ent->e, ENTITY_VALID)) {
@@ -269,6 +227,7 @@ void saveWorld(GameState *gameState, char *dir, char *fileName) {
             EntFileData fileData = beginEntFileData(dir, fileName, "noteParent", ent->e->ID);
 
             beginDataType(&fileData.mem, "NoteParent");
+            addVar(&fileData.mem, &ent->solved, "solved", VAR_BOOL);
             addVar(&fileData.mem, &ent->noteValueCount, "noteValueCount", VAR_INT);
             
             if(ent->noteValueCount > 0) {
@@ -408,7 +367,10 @@ void saveWorld(GameState *gameState, char *dir, char *fileName) {
                 addVar(&fileData.mem, &ent->lerpValueV3.timer.period, "lerpTimerPeriod", VAR_FLOAT);
             } else if(ent->type == EVENT_FADE_OUT) {
                 addVar(&fileData.mem, &ent->fadeTimer.period, "fadeTimerPeriod", VAR_FLOAT);
+            } else if(ent->type == EVENT_LOAD_LEVEL) {
+                addVar(&fileData.mem, &ent->levelName, "levelToLoad", VAR_CHAR_STAR);
             }
+
             endDataType(&fileData.mem);
 
             endEntFileData(&fileData);
@@ -508,8 +470,7 @@ InfiniteAlloc getDataObjects(EasyTokenizer *tokenizer) {
                 data.type = VAR_INT;
                 char charBuffer[256] = {};
                 int value = atoi(nullTerminateBuffer(charBuffer, token.at, token.size));
-                int *var = &data.intVal;
-                *var = value;
+                data.intVal = value;
                 addElementInifinteAlloc_(&types, &data);
             } break;
             case TOKEN_FLOAT: {
@@ -526,14 +487,13 @@ InfiniteAlloc getDataObjects(EasyTokenizer *tokenizer) {
             case TOKEN_BOOL: {
                 DataObject data = {};
                 data.type = VAR_BOOL;
-                int value = 0;
+                bool value = false;
                 if(stringsMatchNullN("true", token.at, token.size)) {
-                    value = 1;
+                    value = true;
                 } else if(stringsMatchNullN("false", token.at, token.size)) {
                     //
                 }
-                bool *var = (bool *)data.boolVal;
-                *var = (bool)value;
+                data.boolVal = value;
                 addElementInifinteAlloc_(&types, &data);
             } break;
             case TOKEN_COLON: {
@@ -622,6 +582,17 @@ int getIntFromDataObjects(InfiniteAlloc *data, EasyTokenizer *tokenizer) {
 
     return result;
 }
+
+bool getBoolFromDataObjects(InfiniteAlloc *data, EasyTokenizer *tokenizer) {
+    *data = getDataObjects(tokenizer);
+    DataObject *objs = (DataObject *)data->memory;
+    assert(objs[0].type == VAR_BOOL);
+    
+    bool result = objs[0].boolVal;
+
+    return result;
+}
+
 
 float getFloatFromDataObjects(InfiniteAlloc *data, EasyTokenizer *tokenizer) {
     *data = getDataObjects(tokenizer);
@@ -746,6 +717,10 @@ void loadWorld(GameState *gameState, char *dir) {
                             char *name = getStringFromDataObjects(&data, &tokenizer);
                             entData.event->sound = findAsset(name);
                             assert(entData.event->sound);
+                        }
+                        if(stringsMatchNullN("levelToLoad", token.at, token.size)) {
+                            char *string = getStringFromDataObjects(&data, &tokenizer);
+                            nullTerminateBuffer(entData.event->levelName, string, strlen(string));
                         }
                         if(stringsMatchNullN("nextEventID", token.at, token.size)) {
                             int nextEventID = getIntFromDataObjects(&data, &tokenizer);
@@ -877,6 +852,9 @@ void loadWorld(GameState *gameState, char *dir) {
                     if(entData.type == ENTITY_TYPE_NOTE_PARENT) {
                         if(stringsMatchNullN("noteValueCount", token.at, token.size)) {
                             entData.noteParent->noteValueCount = getIntFromDataObjects(&data, &tokenizer);
+                        }
+                        if(stringsMatchNullN("solved", token.at, token.size)) {
+                            entData.noteParent->solved = getBoolFromDataObjects(&data, &tokenizer);
                         }
                         //add all notes for the sequence
                         if(stringsMatchNullN("noteSequenceIds", token.at, token.size)) {
@@ -1057,4 +1035,25 @@ void freeFolderNames(FileNameOfType* folderFileNames) {
     for(int i = 0; i < folderFileNames->count; ++i) {
         free(folderFileNames->names[i]);
     }
+}
+
+bool loadLevelFromFile(GameState *gameState, char *loadDirNameFull, char *folderName) {
+    bool result = false;
+    FileNameOfType folderFileNames = getDirectoryFolders(loadDirNameFull);
+    for(int i = 0; i < folderFileNames.count; i++) {
+        char buf[256] = {};
+        getFileLastPortionWithBuffer(buf, 256, folderFileNames.names[i]);
+        printf("found Name: %s\n", folderFileNames.names[i]);
+        printf("folder Name: %s\n", folderName);
+        printf("folder Name: %s\n", buf);
+        if(cmpStrNull(buf, folderName)) {
+            char *loadDir = concat(folderFileNames.names[i], "/");
+            loadWorld(gameState, loadDir);
+            result = true;
+            free(loadDir);
+            break;
+        }
+    }
+    freeFolderNames(&folderFileNames);
+    return result;
 }
