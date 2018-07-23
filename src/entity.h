@@ -68,6 +68,8 @@ typedef struct {
 	float inverse_I; //inertia value
 	float inverseWeight;
 
+	GLBufferHandles bufferHandles;
+
 	Asset *tex;
 
 	animation_list_item AnimationListSentintel;
@@ -147,6 +149,9 @@ typedef struct NoteParent{
 	NoteValue values[MAX_NOTE_SEQUENCE_SIZE];
 	//
 
+	GLBufferHandles puzzleProgressRenderHandles[MAX_NOTE_SEQUENCE_SIZE];
+	LerpV4 puzzleShadeLerp[MAX_NOTE_SEQUENCE_SIZE];
+
 	//////SET ON CREATION////
 	int noteValueCount;
 	Note *sequence[MAX_NOTE_SEQUENCE_SIZE]; //don't have more than a 32 note sequence. 
@@ -155,6 +160,7 @@ typedef struct NoteParent{
 	int soundAt; 
 	Timer soundTimer;
 	LerpV4 shadingLerp;
+
 
 	bool solved; //this will be saved for player progress 
 	Event *eventToTrigger; 
@@ -251,8 +257,7 @@ void setupEntityCommons(Entity_Commons *common, void *entParent, EntType entType
 	common->entType = entType;
 }
 
-Entity_Commons *initEntityCommons(void *entParent, Array_Dynamic *commons_, V3 pos, Asset *tex, float inverseWeight, int ID, EntType entType) {
-	Entity_Commons *common = (Entity_Commons *)getEmptyElement(commons_);
+Entity_Commons *initEntityCommons_(void *entParent, Entity_Commons *common, V3 pos, Asset *tex, float inverseWeight, int ID, EntType entType) {
 	memset(common, 0, sizeof(Entity_Commons));
 
 	setFlag(common, ENTITY_VALID);
@@ -279,6 +284,13 @@ Entity_Commons *initEntityCommons(void *entParent, Array_Dynamic *commons_, V3 p
     	
     setupEntityCommons(common, entParent, entType);
 
+	return common;
+}
+
+Entity_Commons *initEntityCommons(void *entParent, Array_Dynamic *commons_, V3 pos, Asset *tex, float inverseWeight, int ID, EntType entType) {
+	Entity_Commons *common = (Entity_Commons *)getEmptyElement(commons_);
+
+	common = initEntityCommons_(entParent, common, pos, tex, inverseWeight, ID, entType);
 	return common;
 }
 
@@ -393,6 +405,11 @@ void setupNoteParent(NoteParent *entity, Entity_Commons *common) {
 	entity->e->particleSystem.Set.VelBias = rect2fMinMax(-1, -1, 1, 1);
 	entity->e->particleSystem.Set.type = PARTICLE_SYS_CIRCULAR;
 	entity->shadingLerp = initLerpV4();
+	for(int i = 0; i < arrayCount(entity->puzzleShadeLerp); ++i) {
+		LerpV4 *l = entity->puzzleShadeLerp + i;
+		*l = initLerpV4();	
+		l->value = COLOR_RED; //starting color for the red
+	}
 	entity->solved = false;
 }
 
@@ -414,7 +431,9 @@ void setupLight(Light *entity, Entity_Commons *common) {
 
 void initLight(Array_Dynamic *commons_, Light *entity, V3 pos, float flux, int ID) {
 	memset(entity, 0, sizeof(Light)); //clear entity to null
-	entity->e = initEntityCommons(entity, commons_, pos, 0, 0, ID, ENTITY_TYPE_LIGHT);
+	Entity_Commons *common = (Entity_Commons *)malloc(sizeof(Entity_Commons));
+	entity->e = initEntityCommons_(entity, common, pos, 0, 0, ID, ENTITY_TYPE_LIGHT);
+	//entity->e = initEntityCommons_(entity, commons_, pos, 0, 0, ID, ENTITY_TYPE_LIGHT);
 	entity->e->type = ENT_TYPE_DEFAULT;
 	unSetFlag(entity->e, ENTITY_COLLIDES);
 	unSetFlag(entity->e, ENTITY_GRAVITY_AFFECTED);

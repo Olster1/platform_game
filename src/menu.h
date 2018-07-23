@@ -43,9 +43,12 @@ void updateMenu(MenuOptions *menuOptions, GameButton *gameButtons, MenuInfo *inf
 void renderMenu(GLuint backgroundTexId, MenuOptions *menuOptions, MenuInfo *info) {
     
     char *titleAt = menuOptions->options[info->menuCursorAt];
-    
+        
+    static GLBufferHandles backgroundMenuRenderHandles = {};
     glDisable(GL_DEPTH_TEST);
-    openGlTextureCentreDim(backgroundTexId, v3(0.5f*bufferWidth, 0.5f*bufferHeight, -1), v2(bufferWidth, bufferHeight), COLOR_WHITE, 0, mat4(), 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1));
+    renderDisableDepthTest(&globalRenderGroup);
+    openGlTextureCentreDim(&backgroundMenuRenderHandles, backgroundTexId, v3(0.5f*bufferWidth, 0.5f*bufferHeight, -1), v2(bufferWidth, bufferHeight), COLOR_WHITE, 0, mat4(), 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1), mat4());
+    renderEnableDepthTest(&globalRenderGroup);
     glEnable(GL_DEPTH_TEST);
 
     float yIncrement = bufferHeight / (menuOptions->count + 1);
@@ -223,7 +226,9 @@ bool drawMenu(GameState *gameState, char *loadDir, MenuInfo *info, GameButton *g
             
             bool isFullScreen = (windowFlags & SDL_WINDOW_FULLSCREEN);
             char *fullScreenOption = isFullScreen ? (char *)"Exit Full Screen" : (char *)"Full Screen";
+            char *soundOption = globalSoundOn ? (char *)"Turn Off Sound" : (char *)"Turn On Sound";
             menuOptions.options[menuOptions.count++] = fullScreenOption;
+            menuOptions.options[menuOptions.count++] = soundOption;
             menuOptions.options[menuOptions.count++] = "Go Back";
             
             updateMenu(&menuOptions, gameButtons, info);
@@ -243,9 +248,13 @@ bool drawMenu(GameState *gameState, char *loadDir, MenuInfo *info, GameButton *g
                         }
                     } break;
                     case 1: {
+                        globalSoundOn = !globalSoundOn;
+                    } break;
+                    case 2: {
                         info->gameMode = info->lastMode;
                         info->lastMode = SETTINGS_MODE;
                     } break;
+
                 }
                 info->menuCursorAt = 0;
             }

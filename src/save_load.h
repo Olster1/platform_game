@@ -15,115 +15,6 @@ void initWorldDataArrays(GameState *gameState, bool clearArrays) {
     clearAndInitArray(&gameState->lights, Light, clearArrays);
 }
 
-//TODO: THis file uses the the types from easy_timer.h. Use this enum instead of the timer ones!!
-// typedef enum {
-//     VAR_CHAR_STAR,
-//     VAR_LONG_INT,
-//     VAR_INT,
-//     VAR_FLOAT,
-//     VAR_V2,
-//     VAR_V3,
-//     VAR_V4,
-// } VarType_;
-
-void addVar_(InfiniteAlloc *mem, void *val_, int count, char *varName, VarType type) {
-    char data[1028];
-    sprintf(data, "\t%s: ", varName);
-    addElementInifinteAllocWithCount_(mem, data, strlen(data));
-
-    if(count > 0) {
-        if(count > 1 && !(type == VAR_CHAR_STAR || type == VAR_INT)) {
-            assert(!"array not handled yet");
-        }
-        switch(type) {
-            case VAR_CHAR_STAR: {
-                if(count == 1) {
-                    char *val = (char *)val_;
-                    sprintf(data, "\"%s\"", val);
-                } else {
-                    assert(count > 1);
-                    printf("isArray\n");
-
-                    char **val = (char **)val_;
-                    char *bracket = "[";
-                    addElementInifinteAllocWithCount_(mem, bracket, 1);
-                    for(int i = 0; i < count; ++i) {
-                        printf("%s\n", val[i]);
-                        sprintf(data, "\"%s\"", val[i]);    
-                        addElementInifinteAllocWithCount_(mem, data, strlen(data));
-                        if(i != count - 1) {
-                            char *commaString = ", ";
-                            addElementInifinteAllocWithCount_(mem, commaString, 2);
-                        }
-                    }
-                    bracket = "]";
-                    addElementInifinteAllocWithCount_(mem, bracket, 1);
-                    data[0] = 0; //clear data
-                    
-                }
-            } break;
-            case VAR_LONG_INT: {
-                unsigned long *val = (unsigned long *)val_;
-                sprintf(data, "%ld", val[0]);
-            } break;
-            case VAR_INT: {
-                if(count == 1) {
-                    int *val = (int *)val_;
-                    sprintf(data, "%d", val[0]);
-                } else {
-                    assert(count > 1);
-
-                    int *val = (int *)val_;
-                    char *bracket = "[";
-                    addElementInifinteAllocWithCount_(mem, bracket, 1);
-                    for(int i = 0; i < count; ++i) {
-                        sprintf(data, "%d", val[i]);    
-                        addElementInifinteAllocWithCount_(mem, data, strlen(data));
-                        if(i != count - 1) {
-                            char *commaString = ", ";
-                            addElementInifinteAllocWithCount_(mem, commaString, 2);
-                        }
-                    }
-                    bracket = "]";
-                    addElementInifinteAllocWithCount_(mem, bracket, 1);
-                    data[0] = 0; //clear data
-                }
-            } break;
-            case VAR_FLOAT: {
-                float *val = (float *)val_;
-                sprintf(data, "%f", val[0]);
-            } break;
-            case VAR_V2: {
-                float *val = (float *)val_;
-                sprintf(data, "%f %f", val[0], val[1]);
-            } break;
-            case VAR_V3: {
-                float *val = (float *)val_;
-                sprintf(data, "%f %f %f", val[0], val[1], val[2]);
-            } break;
-            case VAR_V4: {
-                float *val = (float *)val_;
-                sprintf(data, "%f %f %f %f", val[0], val[1], val[2], val[3]);
-            } break;
-            case VAR_BOOL: {
-                bool *val = (bool *)val_;
-                const char *boolVal = val[0] ? "true" : "false";
-                sprintf(data, "%s", boolVal);
-            } break;
-            default: {
-                printf("%s\n", "Error: case not handled in saving");
-            }
-        }
-    }
-    addElementInifinteAllocWithCount_(mem, data, strlen(data));
-
-    sprintf(data, ";\n");
-    addElementInifinteAllocWithCount_(mem, data, strlen(data));
-}
-
-#define addVarArray(mem, val_, count, varName, type) addVar_(mem, val_, count, varName, type)
-#define addVar(mem, val_, varName, type) addVar_(mem, val_, 1, varName, type)
-
 typedef struct {
     InfiniteAlloc mem;
     game_file_handle fileHandle;
@@ -214,6 +105,20 @@ void saveWorld(GameState *gameState, char *dir, char *fileName) {
             if(ent->event) {
                 addVar(&fileData.mem, &ent->event->ID, "eventID", VAR_INT);
             }
+            endDataType(&fileData.mem);
+
+            outputCommonData(&fileData.mem, ent->e);
+            endEntFileData(&fileData);
+        }
+    }
+
+    for(int entIndex = 0; entIndex < gameState->lights.count; entIndex++) {
+        Light *ent = (Light *)getElement(&gameState->lights, entIndex);
+        if(ent && isFlagSet(ent->e, ENTITY_VALID)) {
+            EntFileData fileData = beginEntFileData(dir, fileName, "Light", ent->e->ID);
+            beginDataType(&fileData.mem, "Light");
+            
+            addVar(&fileData.mem, &ent->flux, "flux", VAR_FLOAT);
             endDataType(&fileData.mem);
 
             outputCommonData(&fileData.mem, ent->e);
@@ -415,6 +320,9 @@ typedef struct {
             NPC *npc;
         };
         struct {
+            Light *light;
+        };
+        struct {
             Event *event;
         };
     };
@@ -422,98 +330,6 @@ typedef struct {
     Entity_Commons *commons;
 } EntityData;
 
-typedef struct {
-    VarType type;
-
-    union {
-        struct {
-            float floatVal;
-        };
-        struct {
-            char stringVal[256];
-        };
-        struct {
-            int intVal;
-        };
-        struct {
-            bool boolVal;
-        };
-    };
-} DataObject;
-
-InfiniteAlloc getDataObjects(EasyTokenizer *tokenizer) {
-    bool parsing = true;
-    //TODO: arrays
-    InfiniteAlloc types = initInfinteAlloc(DataObject);
-    bool isArray = false;
-    while(parsing) {
-        char *at = tokenizer->src;
-        EasyToken token = lexGetNextToken(tokenizer);
-        //lexPrintToken(&token);
-        assert(at != tokenizer->src);
-        switch(token.type) {
-            case TOKEN_NULL_TERMINATOR: {
-                parsing = false;
-            } break;
-            case TOKEN_WORD: {
-
-            } break;
-            case TOKEN_STRING: {
-                DataObject data = {};
-                data.type = VAR_CHAR_STAR;
-                nullTerminateBuffer(data.stringVal, token.at, token.size);
-                
-                addElementInifinteAlloc_(&types, &data);
-            } break;
-            case TOKEN_INTEGER: {
-                DataObject data = {};
-                data.type = VAR_INT;
-                char charBuffer[256] = {};
-                int value = atoi(nullTerminateBuffer(charBuffer, token.at, token.size));
-                data.intVal = value;
-                addElementInifinteAlloc_(&types, &data);
-            } break;
-            case TOKEN_FLOAT: {
-                char charBuffer[256] = {};
-                nullTerminateBuffer(charBuffer, token.at, token.size);
-                float value = atof(charBuffer);
-                
-                DataObject data = {};
-                data.type = VAR_FLOAT;
-                
-                data.floatVal = value;
-                addElementInifinteAlloc_(&types, &data);
-            } break;
-            case TOKEN_BOOL: {
-                DataObject data = {};
-                data.type = VAR_BOOL;
-                bool value = false;
-                if(stringsMatchNullN("true", token.at, token.size)) {
-                    value = true;
-                } else if(stringsMatchNullN("false", token.at, token.size)) {
-                    //
-                }
-                data.boolVal = value;
-                addElementInifinteAlloc_(&types, &data);
-            } break;
-            case TOKEN_COLON: {
-
-            } break;
-            case TOKEN_OPEN_SQUARE_BRACKET: {
-                isArray = true;
-                //TODO: Do we want to check that this is before any other data??
-            } break;
-            case TOKEN_SEMI_COLON: {
-                parsing = false;
-            } break;
-            default : {
-                
-            }
-        }
-    }
-
-    return types;
-}
 
 typedef enum {
     PATCH_TYPE_ENTITY_POS,
@@ -530,78 +346,7 @@ typedef struct {
 
 } PointerToPatch;
 
-V2 buildV2FromDataObjects(InfiniteAlloc *data, EasyTokenizer *tokenizer) {
-    *data = getDataObjects(tokenizer);
-    DataObject *objs = (DataObject *)data->memory;
-    assert(objs[0].type == VAR_FLOAT);
-    assert(objs[1].type == VAR_FLOAT);
 
-    V2 result = v2(objs[0].floatVal, objs[1].floatVal);
-    return result;
-}
-
-V3 buildV3FromDataObjects(InfiniteAlloc *data, EasyTokenizer *tokenizer) {
-    *data = getDataObjects(tokenizer);
-    DataObject *objs = (DataObject *)data->memory;
-    assert(objs[0].type == VAR_FLOAT);
-    assert(objs[1].type == VAR_FLOAT);
-    assert(objs[2].type == VAR_FLOAT);
-
-    V3 result = v3(objs[0].floatVal, objs[1].floatVal, objs[2].floatVal);
-    return result;
-}
-
-V4 buildV4FromDataObjects(InfiniteAlloc *data, EasyTokenizer *tokenizer) {
-    *data = getDataObjects(tokenizer);
-    DataObject *objs = (DataObject *)data->memory;
-    assert(objs[0].type == VAR_FLOAT);
-    assert(objs[1].type == VAR_FLOAT);
-    assert(objs[2].type == VAR_FLOAT);
-    assert(objs[3].type == VAR_FLOAT);
-
-    V4 result = v4(objs[0].floatVal, objs[1].floatVal, objs[2].floatVal, objs[3].floatVal);
-    return result;
-}
-
-char *getStringFromDataObjects(InfiniteAlloc *data, EasyTokenizer *tokenizer) {
-    *data = getDataObjects(tokenizer);
-    DataObject *objs = (DataObject *)data->memory;
-    assert(objs[0].type == VAR_CHAR_STAR);
-
-    char *result = objs[0].stringVal;
-
-    return result;
-}
-
-int getIntFromDataObjects(InfiniteAlloc *data, EasyTokenizer *tokenizer) {
-    *data = getDataObjects(tokenizer);
-    DataObject *objs = (DataObject *)data->memory;
-    assert(objs[0].type == VAR_INT);
-    
-    int result = objs[0].intVal;
-
-    return result;
-}
-
-bool getBoolFromDataObjects(InfiniteAlloc *data, EasyTokenizer *tokenizer) {
-    *data = getDataObjects(tokenizer);
-    DataObject *objs = (DataObject *)data->memory;
-    assert(objs[0].type == VAR_BOOL);
-    
-    bool result = objs[0].boolVal;
-
-    return result;
-}
-
-
-float getFloatFromDataObjects(InfiniteAlloc *data, EasyTokenizer *tokenizer) {
-    *data = getDataObjects(tokenizer);
-    DataObject *objs = (DataObject *)data->memory;
-    assert(objs[0].type == VAR_FLOAT);
-    
-    float result = objs[0].floatVal;
-    return result;
-}
 
 void loadWorld(GameState *gameState, char *dir) {
     char *fileTypes[] = {"txt"};
@@ -627,13 +372,9 @@ void loadWorld(GameState *gameState, char *dir) {
         EasyTokenizer tokenizer = lexBeginParsing((char *)contents.memory, true);
 
         EntityData entData = {};
-        //with events we won't be able to do this
         entData.commons = (Entity_Commons *)getEmptyElement(&gameState->commons);
         EntType tempType = ENTITY_TYPE_INVALID; //this is to use to see if it is a common type
 
-        DataObject objParent = {};
-        DataObject *currentObj = &objParent;
-        //printf("%s\n", (char *)contents.memory);
         bool parsing = true;
         while(parsing) {
             EasyToken token = lexGetNextToken(&tokenizer);
@@ -685,6 +426,11 @@ void loadWorld(GameState *gameState, char *dir) {
                         entData.type = ENTITY_TYPE_NPC;
                         entData.npc = (NPC *)getEmptyElement(&gameState->npcEntities);
                         setupNPCEnt(entData.npc, entData.commons);
+                    }
+                    if(stringsMatchNullN("Light", token.at, token.size)) {
+                        entData.type = ENTITY_TYPE_LIGHT;
+                        entData.light = (Light *)getEmptyElement(&gameState->lights);
+                        setupLight(entData.light, entData.commons);
                     }
                     if(stringsMatchNullN("Event", token.at, token.size)) {
                         entData.type = ENTITY_TYPE_EVENT;
@@ -799,6 +545,13 @@ void loadWorld(GameState *gameState, char *dir) {
                             patch->type = PATCH_TYPE_EVENT;
                             patch->id = entId;
                             patch->ptr = (void **)(&entData.npc->event);
+                        }
+                    }
+
+                    if(entData.type == ENTITY_TYPE_LIGHT) {
+                        if(stringsMatchNullN("flux", token.at, token.size)) {
+                            float flux = getFloatFromDataObjects(&data, &tokenizer);
+                            entData.light->flux = flux;
                         }
                     }
                     //platform data

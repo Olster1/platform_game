@@ -29,31 +29,44 @@ static float bufferHeight;
 static float bufferWidth; 
 static GameButton gameButtons[BUTTON_COUNT];
 
+
 #include "easy_files.h"
 #include "easy_math.h"
 #include "easy_error.h"
 #include "easy_array.h"
 #include "sdl_audio.h"
 #include "easy_opengl.h"
+
 // #include "../shared/easy_3d.h"
-#include "../shared/easy_font.h"
+#include "easy_font.h"
 #include "easy_timer.h"
+
 #define GJK_IMPLEMENTATION 
 #include "easy_gjk.h"
 #include "easy_physics.h"
 #include "easy_lex.h"
+#include "easy_text_io.h"
+#include "easy_sdl_joystick.h"
+#include "easy_perlin.h"
 
 typedef struct {
     V3 pos;
     V3 dim; 
+    V3 transformPos;
+    V3 transformDim;
+    Matrix4 pvm;
 } RenderInfo;
 
 RenderInfo calculateRenderInfo(V3 pos, V3 dim, V3 cameraPos, Matrix4 metresToPixels) {
     RenderInfo info = {};
-    info.pos = v3_minus(pos, cameraPos);
-    info.pos = transformPositionV3(info.pos, metresToPixels);
+    info.pos = pos;
 
-    info.dim = transformPositionV3(dim, metresToPixels);
+    info.pvm = Mat4Mult(metresToPixels, Matrix4_translate(mat4(), v3_scale(-1, cameraPos)));
+    
+    info.transformPos = V4MultMat4(v4(pos.x, pos.y, pos.z, 1), info.pvm).xyz;
+
+    info.dim = dim;
+    info.transformDim = transformPositionV3(dim, metresToPixels);
     return info;
 }
 
@@ -148,7 +161,7 @@ V2 transformWorldPToScreenP(V2 inputA, float zPos, float width, float height, V2
 }
 
 int main(int argc, char *args[]) {
-    if (SDL_Init(SDL_INIT_VIDEO|SDL_INIT_AUDIO|SDL_INIT_TIMER) == 0) {
+    if (SDL_Init(SDL_INIT_VIDEO|SDL_INIT_AUDIO|SDL_INIT_TIMER|SDL_INIT_GAMECONTROLLER) == 0) {
         
         SDL_Window *windowHandle = 0;
         
@@ -170,17 +183,30 @@ int main(int argc, char *args[]) {
         SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
         SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
         
-        int width = (int)(1280);
-        int height = (int)(720);
+        int width_ = (int)(980);
+        int height_ = (int)(540);    
+
+        V2 screenDim = v2(1280, 720);
+        V2 resolution = v2(width_, height_);
+
+        if(argc > 2) {
+            screenDim.x = atoi(args[1]);
+            screenDim.y = atoi(args[2]);
+        }       
+
+        if(argc > 5) {
+            resolution.x = atoi(args[3]);
+            resolution.y = atoi(args[4]);
+        }       
         
-        bufferWidth = width;
-        bufferHeight = height;
+        bufferWidth = resolution.x;
+        bufferHeight = resolution.y;
         
         windowHandle = SDL_CreateWindow(
             "Mind Man",
             SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 
-            width, 
-            height, 
+            screenDim.x, 
+            screenDim.y, 
             SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
         
         SDL_DisplayMode mode;
@@ -267,7 +293,7 @@ int main(int argc, char *args[]) {
         //////////
 
         ////SETUP OPEN GL//
-        enableOpenGl(width, height);
+        enableOpenGl(bufferWidth, bufferHeight);
         glCheckError();
         //////
 
@@ -399,9 +425,9 @@ int main(int argc, char *args[]) {
         ImGui_ImplSdlGL3_Init(windowHandle);
         
 #endif
-        
-        FrameBuffer compositedBufferMultiSampled = createFrameBufferMultiSample(bufferWidth, bufferWidth, true, 2); 
-        FrameBuffer finalCompositedBuffer = createFrameBuffer(bufferWidth, bufferHeight, true); 
+        FrameBuffer compositedBufferMultiSampled = createFrameBufferMultiSample(bufferWidth, bufferWidth, FRAMEBUFFER_DEPTH | FRAMEBUFFER_STENCIL, 2); 
+        FrameBuffer finalCompositedBuffer = createFrameBuffer(bufferWidth, bufferHeight, FRAMEBUFFER_DEPTH | FRAMEBUFFER_STENCIL); 
+        FrameBuffer lightFrameBuffer = createFrameBuffer(bufferWidth, bufferHeight, FRAMEBUFFER_DEPTH | FRAMEBUFFER_STENCIL); 
         
         V2 middleP = v2(0.5f*bufferWidth, 0.5f*bufferHeight);
         
@@ -438,6 +464,9 @@ int main(int argc, char *args[]) {
         char noteBuf[32] = {};
         float initEntityZPos = -1;
         NoteParent *showPuzzleProgress = 0;
+        LerpV4 puzzleProgressColorLerp = initLerpV4();
+
+        int bestPuzzleMatchSoFar = 0;
 
         NoteParent *playingParentNote = 0;
         NoteParent *mostRecentParentNote = 0;
@@ -460,11 +489,41 @@ int main(int argc, char *args[]) {
         menuInfo.font = &mainFontLarge;
         menuInfo.windowHandle = windowHandle;
         menuInfo.running = &running;
+        #define START_WITH_MENU 1
+        #if START_WITH_MENU
         menuInfo.lastMode = menuInfo.gameMode = MENU_MODE;
-
         setSoundType(AUDIO_FLAG_MENU);
-        assert(isSoundTypeSet(AUDIO_FLAG_MENU));
-        
+        #else 
+        menuInfo.lastMode = menuInfo.gameMode = PLAY_MODE;
+        setSoundType(AUDIO_FLAG_MAIN);
+        #endif
+
+
+// //////////////CREATE PERLIN NOISE DATA///////////////
+// #define perlinWidth 100
+// #define perlinHeight 100
+//         u32 perlinImageData[perlinHeight*perlinWidth] = {};
+//         int arrayAt = 0;
+//         //TODO: THIS CAN BE SIMD 
+//         for(int y = 0; y < perlinHeight; y++) {
+//             for(int x = 0; x < perlinWidth; x++) {
+//                 float perlinValue = perlin2d(x, y, 0.1, 8);
+//                 V4 color = lerpV4(COLOR_BLACK, perlinValue, COLOR_WHITE);
+//                 u32 colorU32 = ((u32)(255.0f*color.x) << 16) | ((u32)(255.0f*color.y) << 8) | 
+//                 ((u32)(255.0f*color.z) << 0) | 0xFF << 24;
+//                 // ((u32)(255.0f*color.w)
+                
+//                 perlinImageData[arrayAt++] = colorU32;
+//             }
+//         }
+
+//         Texture perlinTexture = createTextureOnGPU((unsigned char *)perlinImageData, perlinWidth, perlinHeight, 4);
+// ////////////////
+
+        static bool lastBestPuzzleMatch = 0;
+        Timer showPuzzleProgressTimer = {};
+        showPuzzleProgressTimer.value = -1;
+        V4 progColor = COLOR_WHITE;
         while(running) {
             testInt = 0;
             //Save state of last frame game buttons 
@@ -489,13 +548,8 @@ int main(int argc, char *args[]) {
                 if (event.type == SDL_WINDOWEVENT) {
                     switch(event.window.event) {
                         case SDL_WINDOWEVENT_RESIZED: {
-                            // TODO(Oliver): Work on this! Need to think harder about resizing the screen. 
-                            height = bufferHeight = event.window.data2;
-                            width = bufferWidth = event.window.data1;
-                            
-                            //OpenGlAdjustScreenDim(width, height);
-                            
-                            glViewport(0, 0, event.window.data1, event.window.data2);
+                            screenDim.x = event.window.data1;
+                            screenDim.y = event.window.data2;
                         } break;
                         default: {
                         }
@@ -596,6 +650,7 @@ int main(int argc, char *args[]) {
             //////CLEAR BUFFERS 
             clearBufferAndBind(0, COLOR_PINK);
             clearBufferAndBind(finalCompositedBuffer.bufferId, COLOR_PINK);
+            clearBufferAndBind(lightFrameBuffer.bufferId, COLOR_NULL);
 #define MULTI_SAMPLE 1
 #if MULTI_SAMPLE
             if (MultiSample) {
@@ -605,9 +660,10 @@ int main(int argc, char *args[]) {
             if(drawMenu(gameState, loadProgressDir, &menuInfo, gameButtons, getTextureAsset(skyTex))) {
             
 
-            glDisable(GL_DEPTH_TEST);
-            openGlTextureCentreDim(getTextureAsset(skyTex)->id, v2ToV3(middleP, -1), v2(bufferWidth, bufferHeight), COLOR_WHITE, 0, mat4(), 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1));
-            glEnable(GL_DEPTH_TEST);
+            renderDisableDepthTest(&globalRenderGroup);
+            static GLBufferHandles backgroundBufferHandles = {};
+            openGlTextureCentreDim(&backgroundBufferHandles, getTextureAsset(skyTex)->id, v2ToV3(middleP, -1), v2(bufferWidth, bufferHeight), COLOR_WHITE, 0, mat4(), 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1), mat4());
+            renderEnableDepthTest(&globalRenderGroup);
             ///////
             //////INPUT/////
             ///////EDITOR INPUT///////
@@ -640,10 +696,21 @@ int main(int argc, char *args[]) {
                 RenderInfo renderInfo = calculateRenderInfo(posAt, v3(0.5f, 0.5f, 0), gameState->camera->pos, metresToPixels);
                 //printf("%f\n", hotEvent->pos->z);
                 //printf("%f\n---\n", renderInfo.pos.z);
-                
-                openGlTextureCentreDim(getTextureAsset(enterKeyTex)->id, renderInfo.pos, renderInfo.dim.xy, COLOR_WHITE, 0, mat4(), 1, projectionMatrixToScreen(bufferWidth, bufferHeight));
+                static GLBufferHandles eventSignalBufferHandles = {};
+                openGlTextureCentreDim(&eventSignalBufferHandles, getTextureAsset(enterKeyTex)->id, renderInfo.pos, renderInfo.dim.xy, COLOR_WHITE, 0, mat4(), 1, projectionMatrixToScreen(bufferWidth, bufferHeight), renderInfo.pvm);
                 if(!isEventFlagSet(hotEvent, EVENT_EXPLICIT) || wasPressed(gameButtons, BUTTON_SPACE)) {
                     currentEvent = hotEvent;
+                }
+            }
+
+            globalLightInfoCount = 0;
+            //If lights were just a flat array we wouldn't have to do this. 
+            for(int lightIndex = 0; lightIndex < gameState->lights.count; ++lightIndex) {
+                Light *ent = (Light *)getElement(&gameState->lights, lightIndex);
+                if(ent) {
+                    LightInfo *light = globalLightInfos + globalLightInfoCount++;
+                    light->pos = ent->e->pos; 
+                    light->flux = ent->flux; 
                 }
             }
 
@@ -672,6 +739,7 @@ int main(int argc, char *args[]) {
                             loadLevelFromFile(gameState, loadDir, currentEvent->levelName);
                             currentEvent = currentEvent->nextEvent;
                             showPuzzleProgress = 0;
+                            bestPuzzleMatchSoFar = 0;
                         } break;
                         case EVENT_DIALOG: {
                             if(isEventFlagSet(currentEvent, EVENT_FRESH)) {           
@@ -693,9 +761,9 @@ int main(int argc, char *args[]) {
                             float y = 0.7f*bufferHeight;
                             float dimHeight = 0.3f*bufferHeight;
                             
+                            static GLBufferHandles dialogBoundsHandles = {};
                             outputTextWithLength(&mainFont, x, y, bufferWidth, bufferHeight, text, stringCount, rect2fMinMax(0.2f*bufferWidth, 0, 0.8f*bufferWidth, bufferHeight), COLOR_BLACK, 1, true);
-                            openGlDrawRectCenterDim(v3(0.5f*bufferWidth, y + 0.4f*dimHeight, -1), v2(bufferWidth, dimHeight), v4(0.6f, 0.6f, 0.6f, 0.6f), 0, mat4TopLeftToBottomLeft(bufferHeight), 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1));
-                            
+                            openGlDrawRectCenterDim(&dialogBoundsHandles, v3(0.5f*bufferWidth, y + 0.4f*dimHeight, -1), v2(bufferWidth, dimHeight), v4(0.6f, 0.6f, 0.6f, 0.6f), 0, mat4TopLeftToBottomLeft(bufferHeight), 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1));
 
                             if(timeInfo.finished) {
                                 currentEvent->dialogAt++;
@@ -712,7 +780,8 @@ int main(int argc, char *args[]) {
                         } break;
                         case EVENT_FADE_OUT: {
                             TimerReturnInfo timeInfo = updateTimer(&currentEvent->fadeTimer, dt);
-                            openGlDrawRectCenterDim(v3(0.5f*bufferWidth, 0.5f*bufferHeight, gameState->camera->pos.z - 0.1f), v2(bufferWidth, bufferHeight), v4(0, 0, 0, lerp(0, timeInfo.canonicalVal, 1)), 0, mat4TopLeftToBottomLeft(bufferHeight), 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1));
+                            static GLBufferHandles fadeOutBufferHandle = {};
+                            openGlDrawRectCenterDim(&fadeOutBufferHandle, v3(0.5f*bufferWidth, 0.5f*bufferHeight, gameState->camera->pos.z - 0.1f), v2(bufferWidth, bufferHeight), v4(0, 0, 0, lerp(0, timeInfo.canonicalVal, 1)), 0, mat4TopLeftToBottomLeft(bufferHeight), 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1));
                             if(timeInfo.finished) {
                                 currentEvent->fadeTimer.value = 0;
                                 currentEvent = currentEvent->nextEvent;
@@ -934,8 +1003,9 @@ int main(int argc, char *args[]) {
                         theta += 4*dt;
                         posAt.y += 0.1f*sin(theta);
                         posAt.z += 0.01;
+                        static GLBufferHandles signalParentNote = {};
                         RenderInfo renderInfo = calculateRenderInfo(posAt, v3(0.5f, 0.5f, 0), gameState->camera->pos, metresToPixels);
-                        openGlTextureCentreDim(getTextureAsset(enterKeyTex)->id, renderInfo.pos, renderInfo.dim.xy, COLOR_WHITE, 0, mat4(), 1, projectionMatrixToScreen(bufferWidth, bufferHeight));
+                        openGlTextureCentreDim(&signalParentNote, getTextureAsset(enterKeyTex)->id, renderInfo.pos, renderInfo.dim.xy, COLOR_WHITE, 0, mat4(), 1, projectionMatrixToScreen(bufferWidth, bufferHeight), renderInfo.pvm);
                     }
                 } else {
                     theta = 0;
@@ -1001,6 +1071,7 @@ int main(int argc, char *args[]) {
             
                 playGameSound(&arena, getSoundAsset(note->sound), 0, AUDIO_FOREGROUND);
                 showPuzzleProgress = note->parent;
+                setLerpInfoV4_s(&puzzleProgressColorLerp, COLOR_WHITE, 0.5f, &puzzleProgressColorLerp.value);
 
                 assert(parent->valueCount);
                 bool match = true; //try break the match
@@ -1009,6 +1080,7 @@ int main(int argc, char *args[]) {
                 for(int noteIndex = startIndex; stillOptions && match; ) { //incremented below. Have to do all this because it's a ring buffer
                     assert(stillOptions);
                     bool keepLooking = true;
+                    bestPuzzleMatchSoFar = 0;
                     for(int parIndex = 0; parIndex < parent->noteValueCount && keepLooking; ++parIndex) {
                         NoteValue parVal = parent->sequence[parIndex]->value;
                         int testIndex = noteIndex + parIndex;
@@ -1023,6 +1095,8 @@ int main(int argc, char *args[]) {
                             NoteValue val = parent->values[testIndex];
                             if(parVal != val) {
                                 keepLooking = false;
+                            } else {
+                                bestPuzzleMatchSoFar++;
                             }
                         } else {
                             //break both loops
@@ -1043,6 +1117,7 @@ int main(int argc, char *args[]) {
                         if(parent->eventToTrigger && !parent->solved) {
                             pushCurrentEvent(parent->eventToTrigger, &currentEvent);
                             parent->solved = true;
+                            showPuzzleProgressTimer = initTimer(2.0f);
                         }
                         break;    
                     }    
@@ -1061,6 +1136,17 @@ int main(int argc, char *args[]) {
                 }
             }
             gameState->player->lastNote = note;    
+
+            LerpV4 *progLerp = &puzzleProgressColorLerp;
+            if(isOn(&showPuzzleProgressTimer)) {
+                TimerReturnInfo retInfo = updateTimer(&showPuzzleProgressTimer, dt);
+                if(retInfo.finished) {
+                    showPuzzleProgressTimer.value = -1; //turn off
+                    setLerpInfoV4_s(progLerp, COLOR_NULL, 0.5f, &progLerp->value);
+                }
+            }
+
+            updateLerpV4(progLerp, dt, SMOOTH_STEP_01);
             ///////////////// RAY CASTING FOR PLATFORMS AND JUMPING /////
             CastRayInfo rayInfo = {};
             for(int entIndex = 0; entIndex < gameState->commons.count; entIndex++) {
@@ -1250,18 +1336,23 @@ int main(int argc, char *args[]) {
                     //////////////////////
 
 
-                //Render positions we send to the GPU. Basically the positions in pixels offset from the center of the screen
-                V3 renderPos = v3_minus(v3_plus(ent->pos, ent->renderPosOffset), gameState->camera->pos);
-                renderPos = transformPositionV3(renderPos, metresToPixels);
-                //
-                V3 renderDim = transformPositionV3(v3_hadamard(ent->dim, ent->renderScale), metresToPixels);
+                RenderInfo renderInfo = calculateRenderInfo(v3_plus(ent->pos, ent->renderPosOffset), v3_hadamard(ent->dim, ent->renderScale), gameState->camera->pos, metresToPixels);
+                V3 renderPos = renderInfo.pos;
+                V3 renderDim = renderInfo.dim;
+                V3 transformedPos = renderInfo.transformPos;
+
+                //This is for the editor
                 V3 renderColDim = transformPositionV3(ent->dim, metresToPixels);
+                //
 
+                //This is for the editor to pick up entities 
                 //Region that would actually be occupied on the screen after the GPU projects it onto the screen 
-                Rect2f entBounds = rect2fCenterDimV2(renderPos.xy, renderDim.xy);
+                Rect2f entBounds = rect2fCenterDimV2(transformedPos.xy, renderInfo.transformDim.xy);
 
-                entBounds.min = transformWorldPToScreenP(entBounds.min, renderPos.z, width, height, middleP);
-                entBounds.max = transformWorldPToScreenP(entBounds.max, renderPos.z, width, height, middleP);
+                entBounds.min = transformWorldPToScreenP(entBounds.min, transformedPos.z, bufferWidth, bufferHeight, middleP);
+                entBounds.max = transformWorldPToScreenP(entBounds.max, transformedPos.z, bufferWidth, bufferHeight, middleP);
+                /////
+
 
 #if DEVELOPER_MODE
                 if(debugUI_isOn) {
@@ -1294,7 +1385,7 @@ int main(int argc, char *args[]) {
                         if(interacting.e  == ent) {
                             outlineColor = COLOR_YELLOW;
                         }
-                         openGlDrawRectCenterDim(renderPos, v2_plus(renderColDim.xy, v2(10, 10)), outlineColor, ent->angle, mat4(), 1, projectionMatrixToScreen(bufferWidth, bufferHeight));
+                         openGlDrawRectCenterDim(0, transformedPos, v2_plus(renderColDim.xy, v2(10, 10)), outlineColor, ent->angle, mat4(), 1, projectionMatrixToScreen(bufferWidth, bufferHeight));
 
                      }
                  }
@@ -1347,7 +1438,7 @@ int main(int argc, char *args[]) {
                     } 
                 }
             
-                openGlTextureCentreDim(textureId, renderPos, renderDim.xy, v4_hadamard(shadedColor, ent->shading), ent->angle, mat4(), 1, projectionMatrixToScreen(bufferWidth, bufferHeight));
+                openGlTextureCentreDim(&ent->bufferHandles, textureId, renderPos, renderDim.xy, v4_hadamard(shadedColor, ent->shading), ent->angle, mat4(), 1, mat4(), Mat4Mult(projectionMatrixToScreen(bufferWidth, bufferHeight), renderInfo.pvm));
             }
         }
 
@@ -1369,22 +1460,31 @@ int main(int argc, char *args[]) {
             float xAt = 0.5f*(bufferWidth - (widthPerNote*(parent->noteValueCount + 1)));
 
             for(int noteIndex = 0; noteIndex < parent->noteValueCount; ++noteIndex) {
+                assert(noteIndex < MAX_NOTE_SEQUENCE_SIZE);
                 //TODO: take account of minor notes. 
                 float value = (float)parent->sequence[noteIndex]->value / (float)NOTE_COUNT;
                 float yAt = lerp(yAtMin, value, yAtMax);
                 xAt += widthPerNote;
 
-                // if (parent->noteIndex) {
+                LerpV4 *thisLerp = parent->puzzleShadeLerp + noteIndex;
 
-                // } else {
+                updateLerpV4(thisLerp, dt, SMOOTH_STEP_01);
 
+                V4 color = COLOR_NULL;
+                if(noteIndex < bestPuzzleMatchSoFar) {
+                    setLerpInfoV4_s(thisLerp, COLOR_YELLOW, 0.5f, &thisLerp->value);
+                }
+                color = v4_hadamard(puzzleProgressColorLerp.value, thisLerp->value);
+
+                GLBufferHandles *thisRenderHandle = &parent->puzzleProgressRenderHandles[noteIndex];
+
+                // if(bestPuzzleMatchSoFar != lastBestPuzzleMatch && thisRenderHandle->valid) {
+                //     OpenGLdeleteBufferHandles(thisRenderHandle);
                 // }
-                V4 color = COLOR_RED;
-                //TODO: change this to the pushRect system!!!
-                openGlDrawCircle(v3(xAt, yAt, -1), v2(30, 30), color, mat4TopLeftToBottomLeft(bufferHeight), 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1));
-                //openGlDrawRectCenterDim(, COLOR_RED, 0, mat4TopLeftToBottomLeft(bufferHeight), 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1));
+                openGlDrawCircle(thisRenderHandle, v3(xAt, yAt, -1), v2(70, 70), color, mat4TopLeftToBottomLeft(bufferHeight), 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1), mat4());
             }
         }
+        lastBestPuzzleMatch = bestPuzzleMatchSoFar;
         //  
     
 #if DEVELOPER_MODE
@@ -1398,7 +1498,7 @@ int main(int argc, char *args[]) {
                     screenSpaceP = transformPositionV3(screenSpaceP, metresToPixels);
                     //screenSpaceP.xy = v2_plus(screenSpaceP.xy, middleP);
 
-                    screenSpaceP.xy = transformWorldPToScreenP(screenSpaceP.xy, interacting.e->pos.z, width, height, middleP);
+                    screenSpaceP.xy = transformWorldPToScreenP(screenSpaceP.xy, interacting.e->pos.z, bufferWidth, bufferHeight, middleP);
 
                     //gameState->mouseOffset = v2_minus(screenSpaceP.xy, mouseP_yUp);                    
                     //TODO: Update mostRecentParentNote here. 
@@ -1432,7 +1532,8 @@ int main(int argc, char *args[]) {
                                 } break;
                                 case ENTITY_TYPE_LIGHT: {
                                     Light *newEnt = (Light *)getEmptyElement(&gameState->lights);
-                                    initLight(&gameState->commons, newEnt, initPos, 10, gameState->ID++);
+                                    float flux = 10;
+                                    initLight(&gameState->commons, newEnt, initPos, flux, gameState->ID++);
                                     addToUndoBufferIndex(&gameState->undoBuffer, CREATE_ENTITY, newEnt->e);
                                 } break;
                                 case ENTITY_TYPE_COLLISION: {
@@ -1923,6 +2024,8 @@ int main(int argc, char *args[]) {
                 ImGui::RadioButton("NOTE_PARENT", (int *)(&entityType), (int)ENTITY_TYPE_NOTE_PARENT); 
                 ImGui::RadioButton("SCENARIO ITEM", (int *)(&entityType), (int)ENTITY_TYPE_SCENARIO); 
                 ImGui::RadioButton("NPC", (int *)(&entityType), (int)ENTITY_TYPE_NPC); 
+                ImGui::RadioButton("Light", (int *)(&entityType), (int)ENTITY_TYPE_LIGHT); 
+                
 
                 if(entityType == (int)ENTITY_TYPE_COLLISION) {
                     ImGui::InputFloat("Init Inverse Weight", &initWeight);            
@@ -2024,6 +2127,7 @@ int main(int argc, char *args[]) {
             
 #endif
             } //This is if the playmode state is active
+            drawRenderGroup(&globalRenderGroup);
 #if MULTI_SAMPLE
             if (MultiSample) {
                 glBindFramebuffer(GL_DRAW_FRAMEBUFFER, finalCompositedBuffer.bufferId);
@@ -2035,29 +2139,95 @@ int main(int argc, char *args[]) {
             }
                         ///
 #endif      
-#if 0            
-            //Do post fx here
-            glBindFramebuffer(GL_FRAMEBUFFER, 0); //back to screen buffer
-            V2 screenDim = v2(bufferWidth, bufferHeight);
-            V3 blitPos = v2ToV3(v2_scale(0.5f, screenDim), -1);
+            static float lightT = 0;
+            lightT += dt;
+            static GLBufferHandles lightBackgroundHandle = {};
+            if(menuInfo.gameMode == PLAY_MODE) {
+                //DO LIGHTING HERE
+                glDisable(GL_DEPTH_TEST);
+                renderDisableDepthTest(&globalRenderGroup); 
+                //glBlendEquation(GL_MAX);
 
-            V4 colors[4] = {COLOR_WHITE, COLOR_WHITE, COLOR_WHITE, COLOR_WHITE}; 
-            openGlDrawRectCenterDim_(blitPos, screenDim, colors, 0, mat4(), finalCompositedBuffer.textureId, SHAPE_TEXTURE, textureProgram.glProgram, 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1));
+                glBindFramebuffer(GL_FRAMEBUFFER, lightFrameBuffer.bufferId); //go to final composite buffer
+                setFrameBufferId(&globalRenderGroup, lightFrameBuffer.bufferId);
+                 
+                float darknessAlpha = 0.8f;
+                V4 backgroundColor = v4(0, 0, 0, darknessAlpha);
 
-#else 
+                // glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
+                // glStencilMask(0x00);
+                
+                openGlDrawRectCenterDim(&lightBackgroundHandle, v3(0.5f*bufferWidth, 0.5f*bufferHeight, gameState->camera->pos.z - 0.1f), v2(bufferWidth, bufferHeight), backgroundColor, 0, mat4TopLeftToBottomLeft(bufferHeight), 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1));                
+
+                //////Keep the  background color and don't add the light Color, will the alpha, belnd the alpha but don't add the source alpha since it will accumulate. Want to dilute the alpha. 
+                
+                glBlendFuncSeparate(GL_ZERO, GL_ONE, GL_ZERO, GL_ONE_MINUS_SRC_ALPHA);
+                setBlendFuncType(&globalRenderGroup, BLEND_FUNC_ZERO_ONE_ZERO_ONE_MINUS_ALPHA);
+                //
+
+                // glStencilFunc(GL_ALWAYS, 1, 0xFF);
+                // glStencilMask(0xFF);
+                for(int lightIndex = 0; lightIndex < gameState->lights.count; ++lightIndex) {
+                    Light *ent = (Light *)getElement(&gameState->lights, lightIndex);
+                    if(ent) {
+                        float addOn = 0.4f*sin(3*lightT);
+                        V3 lightDim = v3(ent->flux + addOn, ent->flux + addOn, 0);
+                        RenderInfo renderInfo = calculateRenderInfo(ent->e->pos, lightDim, gameState->camera->pos, metresToPixels);
+                        openGlDrawLight(&ent->e->bufferHandles, renderInfo.pos, lightDim.xy, COLOR_BLACK, mat4(), 1, renderInfo.pvm, projectionMatrixToScreen(bufferWidth, bufferHeight));
+                    }
+                }
+
+                //glBlendEquation(GL_FUNC_ADD);
+                glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+                setBlendFuncType(&globalRenderGroup, BLEND_FUNC_STANDARD);
+
+                glEnable(GL_DEPTH_TEST);
+                renderEnableDepthTest(&globalRenderGroup);
+            } else {
+
+                glBindFramebuffer(GL_FRAMEBUFFER, lightFrameBuffer.bufferId); //go to final composite buffer
+                setFrameBufferId(&globalRenderGroup, lightFrameBuffer.bufferId);
+                renderDisableDepthTest(&globalRenderGroup);
+                glDisable(GL_DEPTH_TEST);
+                static float menuT = 0;
+                menuT += dt;
+                float lightWidth = bufferHeight*lerp(0.8f, inverse_lerp(-1, sin(3*menuT), 1.6f), 1);
+                
+                openGlDrawRectCenterDim(&lightBackgroundHandle, v3(0.5f*bufferWidth, 0.5f*bufferHeight, gameState->camera->pos.z - 0.1f), v2(bufferWidth, bufferHeight), v4(0, 0, 0, 0.9f), 0, mat4TopLeftToBottomLeft(bufferHeight), 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1));                
+                setBlendFuncType(&globalRenderGroup, BLEND_FUNC_ZERO_ONE_ZERO_ONE_MINUS_ALPHA);
+                glBlendFuncSeparate(GL_ZERO, GL_ONE, GL_ZERO, GL_ONE_MINUS_SRC_ALPHA);
+
+                static GLBufferHandles menuLightHandle = {};
+                openGlDrawLight(&menuLightHandle, v3(0.5f*bufferWidth, 0.5f*bufferHeight, -1), v2(lightWidth, lightWidth), COLOR_BLACK, mat4(), 1, mat4(), OrthoMatrixToScreen(bufferWidth, bufferHeight, 1));
+                glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+                setBlendFuncType(&globalRenderGroup, BLEND_FUNC_STANDARD);
+                glEnable(GL_DEPTH_TEST);
+                renderEnableDepthTest(&globalRenderGroup);
+            }
+
+            setFrameBufferId(&globalRenderGroup, finalCompositedBuffer.bufferId);
+            glBindFramebuffer(GL_FRAMEBUFFER, finalCompositedBuffer.bufferId); //go to final composite buffer
+            static GLBufferHandles lightBufferHandles = {};
+            //openGlTextureCentreDim(&lightBufferHandles, lightFrameBuffer.textureId, v2ToV3(middleP, -1), v2(bufferWidth, bufferHeight), COLOR_WHITE, 0, mat4(), 1, mat4(), OrthoMatrixToScreen(bufferWidth, bufferHeight, 1));
+
+            drawRenderGroup(&globalRenderGroup);
+
 //Just blit the texture instead of blending with shader. 
-
+            glViewport(0, 0, screenDim.x, screenDim.y);
             glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
             glCheckError();
             glBindFramebuffer(GL_READ_FRAMEBUFFER, finalCompositedBuffer.bufferId); 
             glCheckError();
-            glBlitFramebuffer(0, 0, bufferWidth, bufferHeight, 0, 0, bufferWidth, bufferHeight, GL_COLOR_BUFFER_BIT, GL_LINEAR);
-            glCheckError();
+            glBlitFramebuffer(0, 0, bufferWidth, bufferHeight, 0, 0, screenDim.x, screenDim.y, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+            glCheckError();                    
+            glViewport(0, 0, bufferWidth, bufferHeight);
+            
+
             glBindFramebuffer(GL_FRAMEBUFFER, 0); //back to screen buffer
-#endif
 
             
 #if IMGUI_ON
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
             ImGui::Render();
             ImGui_ImplSdlGL3_RenderDrawData(ImGui::GetDrawData());
 #endif
