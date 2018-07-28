@@ -160,6 +160,83 @@ V2 transformWorldPToScreenP(V2 inputA, float zPos, float width, float height, V2
     return result;
 }
 
+void submitSoundToParent(Note *note, NoteParent **showPuzzleProgress, Timer *showPuzzleProgressTimer, int *bestPuzzleMatchSoFar, LerpV4 *puzzleProgressColorLerp, Event **currentEvent, Asset *solvedPuzzleSound, NoteParent **lastNoteParent) {
+    NoteParent *parent = note->parent;
+    addValueToNoteParent(note->parent, note->value);
+    
+    *lastNoteParent = parent;
+
+    playGameSound(&arena, getSoundAsset(note->sound), 0, AUDIO_FOREGROUND);
+    *showPuzzleProgress = note->parent;
+    setLerpInfoV4_s(puzzleProgressColorLerp, COLOR_WHITE, 0.5f, &puzzleProgressColorLerp->value);
+
+    assert(parent->valueCount);
+    bool match = true; //try break the match
+    bool stillOptions = (parent->valueCount > 0);
+    int startIndex = (parent->valueCount >= arrayCount(parent->values)) ? parent->valueAt : 0;
+    for(int noteIndex = startIndex; stillOptions && match; ) { //incremented below. Have to do all this because it's a ring buffer
+        assert(stillOptions);
+        bool keepLooking = true;
+        *bestPuzzleMatchSoFar = 0;
+        for(int parIndex = 0; parIndex < parent->noteValueCount && keepLooking; ++parIndex) {
+            NoteValue parVal = parent->sequence[parIndex]->value;
+            int testIndex = noteIndex + parIndex;
+            //wrap index
+            if(testIndex >= parent->valueCount) {
+                testIndex = testIndex - parent->valueCount;
+                assert(testIndex >= 0);
+            }
+            //
+
+            if(testIndex != startIndex || noteIndex == startIndex) { //could overflow past the parent values 
+                NoteValue val = parent->values[testIndex];
+                if(parVal != val) {
+                    keepLooking = false;
+                } else {
+                    *bestPuzzleMatchSoFar = (*bestPuzzleMatchSoFar) + 1;
+                }
+            } else {
+                //break both loops
+                keepLooking = false;
+                match = false;
+                break;
+            }
+        }
+        assert(parent->valueCount > 0);
+        if(match && keepLooking && parent->noteValueCount > 0) {
+            //clear out array 
+            parent->valueAt = 0;
+            parent->valueCount = 0;
+            assert(parent->valueCount == 0);
+            *showPuzzleProgressTimer = initTimer(2.0f);
+            //
+            playGameSound(&arena, getSoundAsset(solvedPuzzleSound), 0, AUDIO_FOREGROUND);
+            Reactivate(&parent->e->particleSystem);
+            assert(!(*currentEvent));
+            if(parent->eventToTrigger && !parent->solved) {
+                //only run the event if the puzzle was solved
+                pushCurrentEvent(parent->eventToTrigger, currentEvent);
+                parent->solved = true;
+            }
+
+            break;    
+        }    
+
+        //Our for loop increment 
+        noteIndex++;
+        if(noteIndex >= parent->valueCount) {
+            noteIndex = 0;
+        }
+        if(noteIndex == startIndex) {
+            stillOptions = false;
+            break;
+        }
+        //
+        assert(noteIndex != startIndex);
+    }
+
+}
+
 int main(int argc, char *args[]) {
     if (SDL_Init(SDL_INIT_VIDEO|SDL_INIT_AUDIO|SDL_INIT_TIMER|SDL_INIT_GAMECONTROLLER) == 0) {
         
@@ -203,7 +280,7 @@ int main(int argc, char *args[]) {
         bufferHeight = resolution.y;
         
         windowHandle = SDL_CreateWindow(
-            "Mind Man",
+            "Note Seeker",
             SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 
             screenDim.x, 
             screenDim.y, 
@@ -212,7 +289,7 @@ int main(int argc, char *args[]) {
         SDL_DisplayMode mode;
         SDL_GetCurrentDisplayMode(0, &mode);
         
-        float dt = 1 / (float)mode.refresh_rate; //use monitor refresh rate 
+        float dt = 1.0f / (float)mode.refresh_rate; //use monitor refresh rate 
         
         SDL_GL_SetAttribute(SDL_GL_SHARE_WITH_CURRENT_CONTEXT, 1); 
         SDL_GLContext threadContext = SDL_GL_CreateContext(windowHandle);
@@ -451,7 +528,7 @@ int main(int argc, char *args[]) {
         bool gravityIsOn = true;
         float initWeight = 0;
         PlatformType platformType = PLATFORM_LINEAR_X;
-        bool followPlayer = true;
+        bool followPlayer = false;
         float distanceFromLayer = 0.4f;
 
 
@@ -489,14 +566,14 @@ int main(int argc, char *args[]) {
         menuInfo.font = &mainFontLarge;
         menuInfo.windowHandle = windowHandle;
         menuInfo.running = &running;
-        #define START_WITH_MENU 1
-        #if START_WITH_MENU
+#define START_WITH_MENU 0
+#if START_WITH_MENU
         menuInfo.lastMode = menuInfo.gameMode = MENU_MODE;
         setSoundType(AUDIO_FLAG_MENU);
-        #else 
+#else 
         menuInfo.lastMode = menuInfo.gameMode = PLAY_MODE;
         setSoundType(AUDIO_FLAG_MAIN);
-        #endif
+#endif
 
 
 // //////////////CREATE PERLIN NOISE DATA///////////////
@@ -524,6 +601,8 @@ int main(int argc, char *args[]) {
         Timer showPuzzleProgressTimer = {};
         showPuzzleProgressTimer.value = -1;
         V4 progColor = COLOR_WHITE;
+        NoteParentType currentNoteParentType = NOTE_PARENT_DEFAULT;
+        NoteParent *lastNoteParent = 0;
         while(running) {
             testInt = 0;
             //Save state of last frame game buttons 
@@ -584,6 +663,12 @@ int main(int argc, char *args[]) {
                         case SDLK_1: {
                             buttonType = BUTTON_1;
                         } break;
+                        case SDLK_BACKQUOTE: {
+                            buttonType = BUTTON_TILDE;
+                        } break;
+                        case SDLK_F1: {
+                            buttonType = BUTTON_F1;
+                        } break;
                         case SDLK_LSHIFT: {
                             //buttonType = BUTTON_SHIFT;
                         } break;
@@ -632,10 +717,10 @@ int main(int argc, char *args[]) {
 
             unsigned int mouseState = SDL_GetMouseState(&mouseX, &mouseY);
             
-            V2 mouseP = v2(mouseX, mouseY);
+            V2 mouseP = v2(mouseX/screenDim.x*bufferWidth, mouseY/screenDim.y*bufferHeight);
             
             V2 mouseP_yUp = v2(mouseP.x, -1*mouseP.y + bufferHeight);
-            
+
 #if IMGUI_ON
             if(!io.WantCaptureMouse) 
 #endif
@@ -667,10 +752,10 @@ int main(int argc, char *args[]) {
             ///////
             //////INPUT/////
             ///////EDITOR INPUT///////
-            if(wasPressed(gameButtons, BUTTON_1)) {
+            if(wasPressed(gameButtons, BUTTON_TILDE)) {
                 debugUI_isOn = !debugUI_isOn;
             }
-            if(wasPressed(gameButtons, BUTTON_ENTER)) {
+            if(wasPressed(gameButtons, BUTTON_ENTER) && isDown(gameButtons, BUTTON_SHIFT)) {
                 gravityIsOn = !gravityIsOn;
             }
             //////
@@ -692,12 +777,11 @@ int main(int argc, char *args[]) {
                 static float theta = 0;
                 theta += dt;
                 V3 posAt = *hotEvent->pos;
+                posAt.z += 0.01f;
                 posAt.y += 0.1f*sin(theta);
                 RenderInfo renderInfo = calculateRenderInfo(posAt, v3(0.5f, 0.5f, 0), gameState->camera->pos, metresToPixels);
-                //printf("%f\n", hotEvent->pos->z);
-                //printf("%f\n---\n", renderInfo.pos.z);
                 static GLBufferHandles eventSignalBufferHandles = {};
-                openGlTextureCentreDim(&eventSignalBufferHandles, getTextureAsset(enterKeyTex)->id, renderInfo.pos, renderInfo.dim.xy, COLOR_WHITE, 0, mat4(), 1, projectionMatrixToScreen(bufferWidth, bufferHeight), renderInfo.pvm);
+                openGlTextureCentreDim(&eventSignalBufferHandles, getTextureAsset(enterKeyTex)->id, renderInfo.pos, renderInfo.dim.xy, COLOR_WHITE, 0, mat4(), 1, renderInfo.pvm, projectionMatrixToScreen(bufferWidth, bufferHeight));
                 if(!isEventFlagSet(hotEvent, EVENT_EXPLICIT) || wasPressed(gameButtons, BUTTON_SPACE)) {
                     currentEvent = hotEvent;
                 }
@@ -762,8 +846,9 @@ int main(int argc, char *args[]) {
                             float dimHeight = 0.3f*bufferHeight;
                             
                             static GLBufferHandles dialogBoundsHandles = {};
-                            outputTextWithLength(&mainFont, x, y, bufferWidth, bufferHeight, text, stringCount, rect2fMinMax(0.2f*bufferWidth, 0, 0.8f*bufferWidth, bufferHeight), COLOR_BLACK, 1, true);
                             openGlDrawRectCenterDim(&dialogBoundsHandles, v3(0.5f*bufferWidth, y + 0.4f*dimHeight, -1), v2(bufferWidth, dimHeight), v4(0.6f, 0.6f, 0.6f, 0.6f), 0, mat4TopLeftToBottomLeft(bufferHeight), 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1));
+                            outputTextWithLength(&mainFont, x, y, bufferWidth, bufferHeight, text, stringCount, rect2fMinMax(0.2f*bufferWidth, 0, 0.8f*bufferWidth, bufferHeight), COLOR_BLACK, 1, true);
+                            
 
                             if(timeInfo.finished) {
                                 currentEvent->dialogAt++;
@@ -968,6 +1053,8 @@ int main(int argc, char *args[]) {
             /////////////////
 
             ////////////PARENT MUSIC NOTE INTERACTION//////////
+
+            float nextSoundPer = 2.0f;
             NoteParent *parentNote = 0;
             for(int entIndex = 0; entIndex < gameState->noteParentEnts.count; entIndex++) {
                 NoteParent *ent = (NoteParent *)getElement(&gameState->noteParentEnts, entIndex);
@@ -978,11 +1065,34 @@ int main(int argc, char *args[]) {
                             parentNote = ent;
                         }
                     }
+                    switch(ent->type) {
+                        case NOTE_PARENT_DEFAULT: {
+                            // don't do anything. 
+                        } break;
+                        case NOTE_PARENT_TIME: {    
+                            if(!ent->solved) {
+                                TimerReturnInfo timeInfo = updateTimer(&ent->autoSoundTimer, dt);
+                                if(timeInfo.finished || !ent->autoPlaying) {
+                                    ent->autoPlaying = true;
+                                    int index = ent->autoSoundAt++; 
+                                    if(ent->autoSoundAt >= ent->noteValueCount) {
+                                        ent->autoSoundAt = 0;
+                                    }
+                                    assert(index < ent->noteValueCount && index >= 0);
+
+                                    submitSoundToParent(ent->sequence[index], &showPuzzleProgress, &showPuzzleProgressTimer, &bestPuzzleMatchSoFar, &puzzleProgressColorLerp, &currentEvent, solvedPuzzleSound, &lastNoteParent);
+                                }
+                            }
+                        } break;
+                        default: {
+                            assert(!"not valid");
+                        }
+                    }
                 }
             }
 
             V4 shadeColorForBlock = hexARGBTo01Color(0xFF7BFF8B);
-            float nextSoundPer = 2.0f;
+            
             static float theta = 0;
             if(!playingParentNote) { //parent not isn't playing 
                 if(parentNote && parentNote->noteValueCount > 0) {
@@ -1005,7 +1115,7 @@ int main(int argc, char *args[]) {
                         posAt.z += 0.01;
                         static GLBufferHandles signalParentNote = {};
                         RenderInfo renderInfo = calculateRenderInfo(posAt, v3(0.5f, 0.5f, 0), gameState->camera->pos, metresToPixels);
-                        openGlTextureCentreDim(&signalParentNote, getTextureAsset(enterKeyTex)->id, renderInfo.pos, renderInfo.dim.xy, COLOR_WHITE, 0, mat4(), 1, projectionMatrixToScreen(bufferWidth, bufferHeight), renderInfo.pvm);
+                        openGlTextureCentreDim(&signalParentNote, getTextureAsset(enterKeyTex)->id, renderInfo.pos, renderInfo.dim.xy, COLOR_WHITE, 0, mat4(), 1, renderInfo.pvm, projectionMatrixToScreen(bufferWidth, bufferHeight));
                     }
                 } else {
                     theta = 0;
@@ -1065,88 +1175,40 @@ int main(int argc, char *args[]) {
                 turnTimerOn(&lastNoteTimer);
 
                 assert(note->parent);
-                NoteParent *parent = note->parent;
 
-                addValueToNoteParent(parent, note->value);
-            
-                playGameSound(&arena, getSoundAsset(note->sound), 0, AUDIO_FOREGROUND);
-                showPuzzleProgress = note->parent;
-                setLerpInfoV4_s(&puzzleProgressColorLerp, COLOR_WHITE, 0.5f, &puzzleProgressColorLerp.value);
-
-                assert(parent->valueCount);
-                bool match = true; //try break the match
-                bool stillOptions = (parent->valueCount > 0);
-                int startIndex = (parent->valueCount >= arrayCount(parent->values)) ? parent->valueAt : 0;
-                for(int noteIndex = startIndex; stillOptions && match; ) { //incremented below. Have to do all this because it's a ring buffer
-                    assert(stillOptions);
-                    bool keepLooking = true;
-                    bestPuzzleMatchSoFar = 0;
-                    for(int parIndex = 0; parIndex < parent->noteValueCount && keepLooking; ++parIndex) {
-                        NoteValue parVal = parent->sequence[parIndex]->value;
-                        int testIndex = noteIndex + parIndex;
-                        //wrap index
-                        if(testIndex >= parent->valueCount) {
-                            testIndex = testIndex - parent->valueCount;
-                            assert(testIndex >= 0);
-                        }
-                        //
-
-                        if(testIndex != startIndex || noteIndex == startIndex) { //could overflow past the parent values 
-                            NoteValue val = parent->values[testIndex];
-                            if(parVal != val) {
-                                keepLooking = false;
-                            } else {
-                                bestPuzzleMatchSoFar++;
-                            }
-                        } else {
-                            //break both loops
-                            keepLooking = false;
-                            match = false;
-                            break;
-                        }
-                    }
-                    assert(parent->valueCount > 0);
-                    if(match && keepLooking && parent->noteValueCount > 0) {
-                        //clear out array 
-                        parent->valueAt = 0;
-                        parent->valueCount = 0;
-                        assert(parent->valueCount == 0);
-                        playGameSound(&arena, getSoundAsset(solvedPuzzleSound), 0, AUDIO_FOREGROUND);
-                        Reactivate(&parent->e->particleSystem);
-                        assert(!currentEvent);
-                        if(parent->eventToTrigger && !parent->solved) {
-                            pushCurrentEvent(parent->eventToTrigger, &currentEvent);
-                            parent->solved = true;
-                            showPuzzleProgressTimer = initTimer(2.0f);
-                        }
-                        break;    
-                    }    
-
-                    //Our for loop increment 
-                    noteIndex++;
-                    if(noteIndex >= parent->valueCount) {
-                        noteIndex = 0;
-                    }
-                    if(noteIndex == startIndex) {
-                        stillOptions = false;
-                        break;
-                    }
-                    //
-                    assert(noteIndex != startIndex);
-                }
+                submitSoundToParent(note, &showPuzzleProgress, &showPuzzleProgressTimer, &bestPuzzleMatchSoFar, &puzzleProgressColorLerp, &currentEvent, solvedPuzzleSound, &lastNoteParent);
             }
             gameState->player->lastNote = note;    
 
             LerpV4 *progLerp = &puzzleProgressColorLerp;
             if(isOn(&showPuzzleProgressTimer)) {
+                //END PUZZLE
+                //assert(gameState->player->lastNote);
+                assert(lastNoteParent);
+                NoteParent *thisParent = lastNoteParent; //gameState->player->lastNote->parent;
                 TimerReturnInfo retInfo = updateTimer(&showPuzzleProgressTimer, dt);
                 if(retInfo.finished) {
                     showPuzzleProgressTimer.value = -1; //turn off
                     setLerpInfoV4_s(progLerp, COLOR_NULL, 0.5f, &progLerp->value);
+
+                    thisParent->valueAt = 0;
+                    thisParent->valueCount = 0;
+                    bestPuzzleMatchSoFar = 0;
+                    
                 }
             }
-
+            bool timerWasOn = isOn(&progLerp->timer);
             updateLerpV4(progLerp, dt, SMOOTH_STEP_01);
+            V4 lerpValue = progLerp->value;
+            bool timerIsOn = isOn(&progLerp->timer);
+            if(timerWasOn && !timerIsOn && v4Equal(lerpValue, COLOR_NULL)) { //timer finished
+                NoteParent *thisParent = lastNoteParent;
+                for(int i = 0; i < arrayCount(thisParent->puzzleShadeLerp); ++i) {
+                    LerpV4 *thisLerp = thisParent->puzzleShadeLerp + i;
+                    thisLerp->value = COLOR_RED;
+                    thisLerp->timer.value = -1;
+                }
+            }
             ///////////////// RAY CASTING FOR PLATFORMS AND JUMPING /////
             CastRayInfo rayInfo = {};
             for(int entIndex = 0; entIndex < gameState->commons.count; entIndex++) {
@@ -1196,6 +1258,56 @@ int main(int argc, char *args[]) {
                     isNanErrorV3(force);
                     if(gravityIsOn && isFlagSet(ent, ENTITY_GRAVITY_AFFECTED)) {
                         force.y = -gravityPower*ent->inverseWeight; //knock static objects gravity out with inverse weight. 
+
+                        ///////////THIS IS SO THE THINGS DON"T FALL OFF LEDGES
+                        if(ent->inverseWeight > 0.0f && ent->type == ENT_TYPE_DEFAULT) {
+                            CastRayInfo rayInfo = {};
+                            
+                            float distanceToJump = 0.1f;
+                            rayInfo = castRayAgainstWorld(gameState, ent, v2_scale(distanceToJump, v2(0, -1)));
+                            ent->timeSinceLastPoll += dt;
+                            if(rayInfo.hitEnt) {
+                                ent->timeInAir = 0;
+                                if(ent->timeSinceLastPoll >= (1.0f/30.0f)) {
+                                    //Only store the postition if it's significantly different
+                                    ent->timeSinceLastPoll = 0;
+                                    int indexAt = ent->lastGroundedAt++;
+                                    
+                                    ent->lastGroundedCount++;
+                                    if(ent->lastGroundedCount > arrayCount(ent->lastGroundedPos)) {
+                                        ent->lastGroundedCount = arrayCount(ent->lastGroundedPos); //clamping the count
+                                    }
+                                    assert(indexAt <= ent->lastGroundedCount);
+                                    if(indexAt == ent->lastGroundedCount) {
+                                        ent->lastGroundedAt = indexAt = 0; //warpping the index
+                                    }
+                                    assert(indexAt >= 0 && indexAt < arrayCount(ent->lastGroundedPos) && indexAt < ent->lastGroundedCount);
+                                    ent->lastGroundedPos[indexAt] = ent->pos;
+                                } 
+                            } else {
+                                ent->timeInAir += dt;
+                                
+                                if(ent->timeInAir > 2.0f/*seconds*/) {
+                                    if(ent->lastGroundedCount > 0) { //haven't polled yet
+                                        int thisIndexAt = (ent->lastGroundedAt + 1); 
+                                        if(thisIndexAt >= ent->lastGroundedCount) {
+                                            thisIndexAt = 0; //this is us wrapping the ring buffer
+                                        }
+                                        assert(thisIndexAt < arrayCount(ent->lastGroundedPos));
+                                        ent->pos = ent->lastGroundedPos[thisIndexAt];
+                                        ent->dP = v3(0, 0, 0);
+                                        ent->timeInAir = 0;
+                                        LerpV4 *thisLerp = &ent->comeBackShading;
+                                        setLerpInfoV4_s(thisLerp, COLOR_NULL, 0.2f, &thisLerp->value);
+                                    }
+                                }
+                            }
+
+                            updateLerpV4(&ent->comeBackShading, dt, SMOOTH_STEP_01010);
+                        }
+
+                        // if(isFlagSet(ent, ENTITY_PLAYER))   //TODO: OPTIMZIATION HERE
+                        //////
                     }
                     if(isFlagSet(ent, ENTITY_PLAYER)) {
                         force = v3_plus(inputAccel, v3_scale(ent->inverseWeight, force)); 
@@ -1390,55 +1502,56 @@ int main(int argc, char *args[]) {
                      }
                  }
 #endif  
-                GLuint textureId = getTextureAsset(ent->tex)->id;
-                if(isFlagSet(ent, ENTITY_ANIMATED)) {
-                    if(!IsEmpty(&ent->AnimationListSentintel)) {
-                        
-                        textureId = getCurrentTexture(&ent->AnimationListSentintel)->id;
-                        animation *NewAnimation = 0;
-                        
-                        AnimationState animState = ANIM_IDLE;
-                        float Speed = getLength(ent->dP.xy);
-                        if(Speed < 1.0f) {
-                            animState = ANIM_IDLE;
-                            //AnimationName = (char *)"Knight_Idle";
-                        } else {
-                            float DirectionValue = GetDirectionInRadians(ent->dP.xy);
-                            DirectionValue =  (4*DirectionValue / TAU32);
-                            int DirectionValue01 = (((int)DirectionValue) + 0.5f < DirectionValue) ? ceil(DirectionValue) : floor(DirectionValue); 
-                            DirectionValue = ((float)DirectionValue01/4.0f); //round direction to nearest direction (NORTH EAST SOUTH WEST)
-
-                            if (DirectionValue == 0 || DirectionValue == 1) {
-                                animState = ANIM_RIGHT;
-                                //AnimationName = (char *)"Knight_Run_Right";
-                            } 
-                            else if (DirectionValue == 0.25f) {
-                                animState = ANIM_UP;
-                                //AnimationName = (char *)"Knight_Run_Up";
-                            } 
-                            else if (DirectionValue == 0.5f) {
-                                animState = ANIM_LEFT;
-                                //AnimationName = (char *)"Knight_Run_Left";
-                            } 
-                            else if (DirectionValue == 0.75f) {
-                                animState = ANIM_DOWN;
-                                //AnimationName = (char *)"Knight_Run_Down";
-                            } else {
+                if(ent->tex) {
+                    GLuint textureId = getTextureAsset(ent->tex)->id;
+                    if(isFlagSet(ent, ENTITY_ANIMATED)) {
+                        if(!IsEmpty(&ent->AnimationListSentintel)) {
+                            
+                            textureId = getCurrentTexture(&ent->AnimationListSentintel)->id;
+                            animation *NewAnimation = 0;
+                            
+                            AnimationState animState = ANIM_IDLE;
+                            float Speed = getLength(ent->dP.xy);
+                            if(Speed < 1.0f) {
                                 animState = ANIM_IDLE;
                                 //AnimationName = (char *)"Knight_Idle";
+                            } else {
+                                float DirectionValue = GetDirectionInRadians(ent->dP.xy);
+                                DirectionValue =  (4*DirectionValue / TAU32);
+                                int DirectionValue01 = (((int)DirectionValue) + 0.5f < DirectionValue) ? ceil(DirectionValue) : floor(DirectionValue); 
+                                DirectionValue = ((float)DirectionValue01/4.0f); //round direction to nearest direction (NORTH EAST SOUTH WEST)
+
+                                if (DirectionValue == 0 || DirectionValue == 1) {
+                                    animState = ANIM_RIGHT;
+                                    //AnimationName = (char *)"Knight_Run_Right";
+                                } 
+                                else if (DirectionValue == 0.25f) {
+                                    animState = ANIM_UP;
+                                    //AnimationName = (char *)"Knight_Run_Up";
+                                } 
+                                else if (DirectionValue == 0.5f) {
+                                    animState = ANIM_LEFT;
+                                    //AnimationName = (char *)"Knight_Run_Left";
+                                } 
+                                else if (DirectionValue == 0.75f) {
+                                    animState = ANIM_DOWN;
+                                    //AnimationName = (char *)"Knight_Run_Down";
+                                } else {
+                                    animState = ANIM_IDLE;
+                                    //AnimationName = (char *)"Knight_Idle";
+                                }
                             }
-                        }
 
-                        //assert(AnimationName);
-                        AnimationParent *animParent = getAnimationAsset(ent->animationParent);
-                        NewAnimation = FindAnimationWithState(animParent->anim, animParent->count, animState);
+                            //assert(AnimationName);
+                            AnimationParent *animParent = getAnimationAsset(ent->animationParent);
+                            NewAnimation = FindAnimationWithState(animParent->anim, animParent->count, animState);
 
-                        assert(NewAnimation);
-                        UpdateAnimation(gameState, ent, dt, NewAnimation);
-                    } 
+                            assert(NewAnimation);
+                            UpdateAnimation(gameState, ent, dt, NewAnimation);
+                        } 
+                    }
+                    openGlTextureCentreDim(&ent->bufferHandles, textureId, renderPos, renderDim.xy, v4_hadamard(ent->comeBackShading.value, v4_hadamard(shadedColor, ent->shading)), ent->angle, mat4(), 1, mat4(), Mat4Mult(projectionMatrixToScreen(bufferWidth, bufferHeight), renderInfo.pvm));
                 }
-            
-                openGlTextureCentreDim(&ent->bufferHandles, textureId, renderPos, renderDim.xy, v4_hadamard(shadedColor, ent->shading), ent->angle, mat4(), 1, mat4(), Mat4Mult(projectionMatrixToScreen(bufferWidth, bufferHeight), renderInfo.pvm));
             }
         }
 
@@ -1573,7 +1686,7 @@ int main(int argc, char *args[]) {
                                 case ENTITY_TYPE_NOTE_PARENT: {
                                     if(noteBuf[0] != '\0') {
                                         NoteParent *newEnt = (NoteParent *)getEmptyElement(&gameState->noteParentEnts);
-                                        initNoteParentEnt(&gameState->commons, newEnt, initPos, stevinusTex, gameState->ID++);
+                                        initNoteParentEnt(&gameState->commons, newEnt, initPos, currentNoteParentType, stevinusTex, gameState->ID++);
                                         mostRecentParentNote = newEnt;
                                         char *at = noteBuf;
                                         while(*at) {
@@ -1702,7 +1815,7 @@ int main(int argc, char *args[]) {
                 ImGui::InputFloat3("Velocity", interacting.e->dP.E);            
                 ImGui::InputFloat3("Acceleration", interacting.e->ddP.E);            
                 ImGui::InputFloat3("Dim", interacting.e->dim.E);            
-                ImGui::InputFloat3("Scale", interacting.e->renderScale.E);        
+                ImGui::InputFloat3("Render Scale", interacting.e->renderScale.E);        
                 ImGui::InputFloat3("Render offset", interacting.e->renderPosOffset.E);        
                 ImGui::ColorEdit4("Shading Color", interacting.e->shading.E); 
 
@@ -2075,8 +2188,10 @@ int main(int argc, char *args[]) {
 
                 if(entityType == (int)ENTITY_TYPE_NOTE_PARENT) {
                     ImGui::InputText("note parent values", noteBuf, IM_ARRAYSIZE(noteBuf));
+                    for(int i = 0; i < arrayCount(NoteParentTypeStrings); ++i) {
+                        ImGui::RadioButton(NoteParentTypeStrings[i], (int *)(&currentNoteParentType), (int)NoteParentTypeValues[i]); 
+                    }
                 }
-
                 
                 static int listbox_item_current = 1;
                 ImGui::ListBox("textures\n", &listbox_item_current, texNames, texCount, 4);
@@ -2208,8 +2323,9 @@ int main(int argc, char *args[]) {
             setFrameBufferId(&globalRenderGroup, finalCompositedBuffer.bufferId);
             glBindFramebuffer(GL_FRAMEBUFFER, finalCompositedBuffer.bufferId); //go to final composite buffer
             static GLBufferHandles lightBufferHandles = {};
-            //openGlTextureCentreDim(&lightBufferHandles, lightFrameBuffer.textureId, v2ToV3(middleP, -1), v2(bufferWidth, bufferHeight), COLOR_WHITE, 0, mat4(), 1, mat4(), OrthoMatrixToScreen(bufferWidth, bufferHeight, 1));
+            openGlTextureCentreDim(&lightBufferHandles, lightFrameBuffer.textureId, v2ToV3(middleP, -1), v2(bufferWidth, bufferHeight), COLOR_WHITE, 0, mat4(), 1, mat4(), OrthoMatrixToScreen(bufferWidth, bufferHeight, 1));
 
+                        
             drawRenderGroup(&globalRenderGroup);
 
 //Just blit the texture instead of blending with shader. 
@@ -2223,21 +2339,31 @@ int main(int argc, char *args[]) {
             glViewport(0, 0, bufferWidth, bufferHeight);
             
 
-            glBindFramebuffer(GL_FRAMEBUFFER, 0); //back to screen buffer
-
+            unsigned int now = SDL_GetTicks();
+            float timeInFrameSeconds = (now - lastTime);
+            //TODO: Do our own wait if Vsync isn't on. 
+#if DEVELOPER_MODE
+            if(debugUI_isOn) 
+            {
+                // char secondsInFrameString[256] = {};
+                // sprintf(secondsInFrameString, "%f\n", 1.0f / timeInFrameSeconds);
+                // globalFontImmediate = true;
+                // outputText(&mainFontLarge, 0.1f*bufferWidth, 0.1f*bufferHeight, bufferWidth, bufferHeight, secondsInFrameString, rect2fMinMax(0.2f*bufferWidth, 0, 0.8f*bufferWidth, bufferHeight), COLOR_GREEN, 1, true);   
+                // globalFontImmediate = false;
+                // drawRenderGroup(&globalRenderGroup);
+            }
+#endif
             
 #if IMGUI_ON
             glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
             ImGui::Render();
             ImGui_ImplSdlGL3_RenderDrawData(ImGui::GetDrawData());
 #endif
-
-
             updateChannelVolumes(dt);
 
-            unsigned int now = SDL_GetTicks();
-            float timeInFrame = (now - lastTime);
-            //printf("%f\n", timeInFrame);
+
+
+            
             lastTime = SDL_GetTicks();
             
             SDL_GL_SwapWindow(windowHandle);

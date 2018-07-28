@@ -134,6 +134,7 @@ void saveWorld(GameState *gameState, char *dir, char *fileName) {
             beginDataType(&fileData.mem, "NoteParent");
             addVar(&fileData.mem, &ent->solved, "solved", VAR_BOOL);
             addVar(&fileData.mem, &ent->noteValueCount, "noteValueCount", VAR_INT);
+            addVar(&fileData.mem, NoteParentTypeStrings[ent->type], "noteParentType", VAR_CHAR_STAR);
             
             if(ent->noteValueCount > 0) {
                 int noteIds[32] = {};
@@ -605,6 +606,12 @@ void loadWorld(GameState *gameState, char *dir) {
                     if(entData.type == ENTITY_TYPE_NOTE_PARENT) {
                         if(stringsMatchNullN("noteValueCount", token.at, token.size)) {
                             entData.noteParent->noteValueCount = getIntFromDataObjects(&data, &tokenizer);
+                        }
+                        if(stringsMatchNullN("noteParentType", token.at, token.size)) {
+                            char *name = getStringFromDataObjects(&data, &tokenizer);
+                            int typeAsInt = findEnumValue(name, NoteParentTypeStrings, arrayCount(NoteParentTypeStrings));
+                            assert(typeAsInt >= 0);
+                            entData.noteParent->type = NoteParentTypeValues[typeAsInt];
                         }
                         if(stringsMatchNullN("solved", token.at, token.size)) {
                             entData.noteParent->solved = getBoolFromDataObjects(&data, &tokenizer);

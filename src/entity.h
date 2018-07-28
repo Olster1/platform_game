@@ -61,9 +61,7 @@ typedef struct {
 	V3 dim;
 
 	V3 renderScale; //render scale
-
-	float angle; //in 2d so always around the z-axis
-	float dA; //delta angle
+	
 	
 	float inverse_I; //inertia value
 	float inverseWeight;
@@ -72,8 +70,21 @@ typedef struct {
 
 	Asset *tex;
 
+	float timeInAir;
+
+	float timeSinceLastPoll; //this is polling grounded positions
+
+	int lastGroundedAt;
+	int lastGroundedCount;
+	V3 lastGroundedPos[20];
+
+	LerpV4 comeBackShading; // this should be a buffer so we can't keep pushing different shadings on, like being hurt etc. 
+
 	animation_list_item AnimationListSentintel;
 	Asset *animationParent; //these is the static/global animation
+
+	float angle; //in 2d so always around the z-axis
+	float dA; //delta angle
 
 	particle_system particleSystem;
 
@@ -119,7 +130,6 @@ typedef struct {
 	Event *event;
 } NPC;
 
-
 typedef struct NoteParent NoteParent;
 typedef struct Note Note;
 typedef struct Note {
@@ -138,9 +148,23 @@ typedef struct {
 	Entity_Commons *e;
 } Light;
 
+#define NOTE_PARENT_TYPE(FUNC) \
+FUNC(NOTE_PARENT_NULL) \
+FUNC(NOTE_PARENT_DEFAULT) \
+FUNC(NOTE_PARENT_TIME) \
+
+typedef enum {
+	NOTE_PARENT_TYPE(ENUM)
+} NoteParentType;
+
+static char *NoteParentTypeStrings[] = { NOTE_PARENT_TYPE(STRING) };
+static NoteParentType NoteParentTypeValues[] = { NOTE_PARENT_TYPE(ENUM) };
+
 #define MAX_NOTE_SEQUENCE_SIZE 16
 typedef struct NoteParent{
 	Entity_Commons *e;
+
+	NoteParentType type;
 
 	//Used to match whether it is right
 	//This is a ring buffer
@@ -161,6 +185,9 @@ typedef struct NoteParent{
 	Timer soundTimer;
 	LerpV4 shadingLerp;
 
+	int autoSoundAt; 
+	Timer autoSoundTimer;
+	bool autoPlaying;
 
 	bool solved; //this will be saved for player progress 
 	Event *eventToTrigger; 
@@ -255,6 +282,8 @@ void setupEntityCommons(Entity_Commons *common, void *entParent, EntType entType
 	common->AnimationListSentintel.Next = common->AnimationListSentintel.Prev = &common->AnimationListSentintel; 
 	common->parent = entParent;
 	common->entType = entType;
+	common->comeBackShading = initLerpV4();
+	common->comeBackShading.value = COLOR_WHITE;
 }
 
 Entity_Commons *initEntityCommons_(void *entParent, Entity_Commons *common, V3 pos, Asset *tex, float inverseWeight, int ID, EntType entType) {
@@ -411,15 +440,18 @@ void setupNoteParent(NoteParent *entity, Entity_Commons *common) {
 		l->value = COLOR_RED; //starting color for the red
 	}
 	entity->solved = false;
+	entity->autoSoundTimer = initTimer(2.0f); //THIS NEEDS TO BE SET IN THE SAVE LOAD FILE
 }
 
-void initNoteParentEnt(Array_Dynamic *commons_, NoteParent *entity, V3 pos, Asset *tex, int ID) {
+void initNoteParentEnt(Array_Dynamic *commons_, NoteParent *entity, V3 pos, NoteParentType type, Asset *tex, int ID) {
 	memset(entity, 0, sizeof(NoteParent)); //clear entity to null
 	entity->e = initEntityCommons(entity, commons_, pos, tex, 0, ID, ENTITY_TYPE_NOTE_PARENT);
 	entity->e->type = ENT_TYPE_DEFAULT;
 	unSetFlag(entity->e, ENTITY_COLLIDES);
 
 	setupNoteParent(entity, 0);
+
+	entity->type = type;
 }
 
 void setupLight(Light *entity, Entity_Commons *common) {
@@ -464,7 +496,6 @@ void initNPCEnt(Array_Dynamic *commons_, Array_Dynamic *events, NPC *entity, V3 
 	entity->e = initEntityCommons(entity, commons_, pos, tex, inverseWeight, ID, ENTITY_TYPE_NPC);
 	entity->e->type = ENT_TYPE_DEFAULT;
 	setFlag(entity->e, ENTITY_ANIMATED);
-	unSetFlag(entity->e, ENTITY_COLLIDES_WITH_PLAYER);
 		
 	setupNPCEnt(entity, 0);
 	Entity_Commons *com = entity->e;
@@ -472,6 +503,10 @@ void initNPCEnt(Array_Dynamic *commons_, Array_Dynamic *events, NPC *entity, V3 
 	Event_EntCommonsInfo evComInfo = {};
 	evComInfo.id = com->ID;
 	evComInfo.pos = &com->pos;
+
+	unSetFlag(entity->e, ENTITY_COLLIDES_WITH_PLAYER);
+	unSetFlag(entity->e, ENTITY_COLLIDES);
+	unSetFlag(entity->e, ENTITY_GRAVITY_AFFECTED);
 	
 	entity->event = addDialogEvent(events, &evComInfo, v3_scale(2, entity->e->dim), EVENT_EXPLICIT | EVENT_TRIGGER, eventId);
 }
