@@ -83,7 +83,7 @@ char *getFileLastPortionWithoutExtension(char *name) {
 }
 
 typedef struct {
-    char *names[32]; //max 32 files
+    char *names[256]; //max 32 files
     int count;
 } FileNameOfType;
 

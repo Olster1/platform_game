@@ -1,0 +1,19 @@
+Light: {
+	flux: 10.000000;
+
+}
+Commons: {
+	id: 25;
+	name: "(null)";
+	flags: 145;
+	type: "ENT_TYPE_DEFAULT";
+	position: -0.511242 4.339336 -1.000000;
+	velocity: 0.000000 0.000000 0.000000;
+	renderPosOffset: 0.000000 0.000000 0.000000;
+	dim: 1.000000 1.000000 1.000000;
+	renderScale: 1.000000 1.000000 1.000000;
+	shading: 1.000000 1.000000 1.000000 1.000000;
+	inverseWeight: 0.000000;
+	angle: 0.000000;
+
+}

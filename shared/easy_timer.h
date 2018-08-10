@@ -41,6 +41,7 @@ TimerReturnInfo updateTimer(Timer *timer, float dt) {
 FUNC(LINEAR) \
 FUNC(SMOOTH_STEP_01) \
 FUNC(SMOOTH_STEP_00) \
+FUNC(SMOOTH_STEP_01010) \
 
 typedef enum {
     LERP_TYPE(ENUM)
@@ -54,6 +55,7 @@ typedef struct {
 
     int lineNumber;
     
+    float value;
     float *val;
     Timer timer;
 } Lerpf;
@@ -64,6 +66,7 @@ typedef struct {
 
     int lineNumber;
     
+    V4 value; //can point to this if it wants
     V4 *val;
     Timer timer;
 } LerpV4;
@@ -75,21 +78,18 @@ typedef struct {
 
     int lineNumber;
     
+    V3 value;
     V3 *val;
     Timer timer;
 } LerpV3;
 
 //TODO: change this to its own TimerVarType
 typedef enum {
-    VAR_CHAR_STAR,
-    VAR_LONG_INT,
-    VAR_INT,
-    VAR_FLOAT,
-    VAR_V2,
-    VAR_V3,
-    VAR_V4,
-    VAR_BOOL,
-} VarType;
+    VAR_TIMER_FLOAT,
+    VAR_TIMER_V2,
+    VAR_TIMER_V3,
+    VAR_TIMER_V4,
+} TimerVarType;
 
 float updateLerpf_(float tAt, Lerpf *f, LerpType lerpType, TimerReturnInfo timeInfo) {
     
@@ -133,6 +133,10 @@ V4 updateLerpV4_(float tAt, LerpV4 *f, LerpType lerpType, TimerReturnInfo timeIn
         case SMOOTH_STEP_01: {
             lerpValue = smoothStep01V4(f->a, tAt, f->b);
         } break;
+        case SMOOTH_STEP_01010: {
+            lerpValue = smoothStep01010V4(f->a, tAt, f->b);
+            finishingValue = f->a;
+        } break;
         default: {
             invalidCodePathStr("Unhandled case in update lerp function\n");
         }
@@ -172,20 +176,20 @@ V3 updateLerpV3_(float tAt, LerpV3 *f, LerpType lerpType, TimerReturnInfo timeIn
     return lerpValue;
 }
 
-void updateLerpGeneral_(void *lerpStruct, Timer *timer, float dt, void *valPrt, LerpType lerpType, VarType varType) {
+void updateLerpGeneral_(void *lerpStruct, Timer *timer, float dt, void *valPrt, LerpType lerpType, TimerVarType varType) {
     if(timer->value >= 0 && valPrt) { 
         TimerReturnInfo timeInfo = updateTimer(timer, dt);
         
         switch(varType) {
-            case VAR_FLOAT: {
+            case VAR_TIMER_FLOAT: {
                 Lerpf *f = (Lerpf *)lerpStruct;
                 *(f->val) = updateLerpf_(timeInfo.canonicalVal, f, lerpType, timeInfo);
             } break;
-            case VAR_V4: {
+            case VAR_TIMER_V4: {
                 LerpV4 *f = (LerpV4 *)lerpStruct;
                 *(f->val) = updateLerpV4_(timeInfo.canonicalVal, f, lerpType, timeInfo);
             } break;
-            case VAR_V3: {
+            case VAR_TIMER_V3: {
                 LerpV3 *f = (LerpV3 *)lerpStruct;
                 *(f->val) = updateLerpV3_(timeInfo.canonicalVal, f, lerpType, timeInfo);
             } break;
@@ -197,16 +201,16 @@ void updateLerpGeneral_(void *lerpStruct, Timer *timer, float dt, void *valPrt, 
 }
 
 void updateLerpf(Lerpf *f, float dt, LerpType lerpType) {
-    updateLerpGeneral_(f, &f->timer, dt, f->val, lerpType, VAR_FLOAT);
+    updateLerpGeneral_(f, &f->timer, dt, f->val, lerpType, VAR_TIMER_FLOAT);
 }
 
 
 void updateLerpV4(LerpV4 *f, float dt, LerpType lerpType) {
-    updateLerpGeneral_(f, &f->timer, dt, f->val, lerpType, VAR_V4);
+    updateLerpGeneral_(f, &f->timer, dt, f->val, lerpType, VAR_TIMER_V4);
 }
 
 void updateLerpV3(LerpV3 *f, float dt, LerpType lerpType) {
-    updateLerpGeneral_(f, &f->timer, dt, f->val, lerpType, VAR_V3);
+    updateLerpGeneral_(f, &f->timer, dt, f->val, lerpType, VAR_TIMER_V3);
 }
 
 void setLerpInfof_(Lerpf *f, float a, float b, float period, float *val, int lineNumber) {

@@ -12,6 +12,14 @@ void easy_phys_updatePosAndVel(V3 *pos, V3 *dP, V3 dPP, float dtValue, float dra
 	*dP = v3_plus(*dP, v3_minus(v3_scale(dtValue, dPP), v3_scale(dragFactor, *dP)));
 }
 
+float getDtValue(float idealFrameTime, int loopIndex, float dt, float remainder) {
+	float dtValue = idealFrameTime;
+	if((dtValue * (loopIndex + 1)) > dt) {
+	    dtValue = remainder;
+	}
+	return dtValue;
+}
+
 //assumes the shape is clockwise
 RayCastInfo easy_phys_castRay(V2 startP, V2 ray, V2 *points, int count) {
 	isNanErrorV2(startP);

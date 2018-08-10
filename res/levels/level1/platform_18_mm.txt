@@ -8,14 +8,14 @@ Commons: {
 	name: "(null)";
 	flags: 153;
 	type: "ENT_TYPE_PLATFORM";
-	position: 15.221363 3.438475 -1.000000;
-	velocity: 0.833333 0.000000 0.000000;
+	position: 15.300375 3.438475 -1.000000;
+	velocity: -0.833333 0.000000 0.000000;
 	renderPosOffset: 0.000000 0.300000 0.000000;
 	dim: 2.500000 1.000000 1.000000;
 	renderScale: 1.000000 1.000000 1.000000;
 	shading: 1.000000 1.000000 1.000000 1.000000;
 	texture: "moss_block1.bmp";
-	inverseWeight: 0.000100;
+	inverseWeight: 1.0f;
 	angle: 0.000000;
 
 }

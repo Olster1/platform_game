@@ -13,6 +13,8 @@ void initWorldDataArrays(GameState *gameState, bool clearArrays) {
     clearAndInitArray(&gameState->npcEntities, NPC, clearArrays);
     clearAndInitArray(&gameState->events, Event, clearArrays);
     clearAndInitArray(&gameState->lights, Light, clearArrays);
+    clearAndInitArray(&gameState->renderCircles, RenderCircle, clearArrays);
+    
 }
 
 typedef struct {
@@ -133,6 +135,7 @@ void saveWorld(GameState *gameState, char *dir, char *fileName) {
 
             beginDataType(&fileData.mem, "NoteParent");
             addVar(&fileData.mem, &ent->solved, "solved", VAR_BOOL);
+            addVar(&fileData.mem, &ent->showChildren, "showChildren", VAR_BOOL);
             addVar(&fileData.mem, &ent->noteValueCount, "noteValueCount", VAR_INT);
             addVar(&fileData.mem, NoteParentTypeStrings[ent->type], "noteParentType", VAR_CHAR_STAR);
             
@@ -168,6 +171,8 @@ void saveWorld(GameState *gameState, char *dir, char *fileName) {
             }
             addVar(&fileData.mem, NoteValueStrings[ent->value], "noteValue", VAR_CHAR_STAR);
             addVar(&fileData.mem, &ent->parent->e->ID, "parentID", VAR_INT);
+            addVar(&fileData.mem, &ent->isPlayedByParent, "isPlayedByParent", VAR_BOOL);
+            
             endDataType(&fileData.mem);
 
             outputCommonData(&fileData.mem, ent->e);
@@ -389,7 +394,7 @@ void loadWorld(GameState *gameState, char *dir) {
                     if(stringsMatchNullN("Platform", token.at, token.size)) {
                         entData.type = ENTITY_TYPE_PLATFORM;
                         entData.platform = (Entity *)getEmptyElement(&gameState->platformEnts);
-                        setupPlatformEnt(entData.platform, entData.commons);
+                        setupPlatformEnt(entData.platform, entData.commons, &gameState->particleSystems);
                     }
                     if(stringsMatchNullN("Commons", token.at, token.size)) {
                         tempType = ENTITY_TYPE_COMMONS;
@@ -397,12 +402,12 @@ void loadWorld(GameState *gameState, char *dir) {
                     if(stringsMatchNullN("Door", token.at, token.size)) {
                         entData.type = ENTITY_TYPE_DOOR;
                         entData.door = (Door *)getEmptyElement(&gameState->doorEnts);
-                        setupDoorEnt(entData.door, entData.commons);
+                        setupDoorEnt(entData.door, entData.commons, &gameState->particleSystems);
                     }
                     if(stringsMatchNullN("Collision", token.at, token.size)) {
                         entData.type = ENTITY_TYPE_COLLISION;
                         entData.collision = (Collision_Object *)getEmptyElement(&gameState->collisionEnts);
-                        setupCollisionEnt(entData.collision, entData.commons);
+                        setupCollisionEnt(entData.collision, entData.commons, &gameState->particleSystems);
                     }
                     if(stringsMatchNullN("Camera", token.at, token.size)) {
                         entData.type = ENTITY_TYPE_CAMERA;
@@ -411,27 +416,27 @@ void loadWorld(GameState *gameState, char *dir) {
                     if(stringsMatchNullN("Entity", token.at, token.size)) {
                         entData.type = ENTITY_TYPE_ENTITY;
                         entData.entity = (Entity *)getEmptyElement(&gameState->entities);
-                        setupEnt(entData.entity, entData.commons);
+                        setupEnt(entData.entity, entData.commons, &gameState->particleSystems);
                     }
                     if(stringsMatchNullN("Note", token.at, token.size)) {
                         entData.type = ENTITY_TYPE_NOTE;
                         entData.note = (Note *)getEmptyElement(&gameState->noteEnts);
-                        setupNoteEnt(entData.note, entData.commons);
+                        setupNoteEnt(entData.note, entData.commons, &gameState->particleSystems);
                     }
                     if(stringsMatchNullN("NoteParent", token.at, token.size)) {
                         entData.type = ENTITY_TYPE_NOTE_PARENT;
                         entData.noteParent = (NoteParent *)getEmptyElement(&gameState->noteParentEnts);
-                        setupNoteParent(entData.noteParent, entData.commons);
+                        setupNoteParent(entData.noteParent, entData.commons, &gameState->particleSystems);
                     }
                     if(stringsMatchNullN("NPC", token.at, token.size)) {
                         entData.type = ENTITY_TYPE_NPC;
                         entData.npc = (NPC *)getEmptyElement(&gameState->npcEntities);
-                        setupNPCEnt(entData.npc, entData.commons);
+                        setupNPCEnt(entData.npc, entData.commons, &gameState->particleSystems);
                     }
                     if(stringsMatchNullN("Light", token.at, token.size)) {
                         entData.type = ENTITY_TYPE_LIGHT;
                         entData.light = (Light *)getEmptyElement(&gameState->lights);
-                        setupLight(entData.light, entData.commons);
+                        setupLight(entData.light, entData.commons, &gameState->particleSystems);
                     }
                     if(stringsMatchNullN("Event", token.at, token.size)) {
                         entData.type = ENTITY_TYPE_EVENT;
@@ -595,6 +600,10 @@ void loadWorld(GameState *gameState, char *dir) {
                             assert(typeAsInt >= 0);
                             entData.note->value = (NoteValue)typeAsInt;
                         }
+                        if(stringsMatchNullN("isPlayedByParent", token.at, token.size)) {
+                            entData.note->isPlayedByParent = getBoolFromDataObjects(&data, &tokenizer);
+                        }
+                        
                         if(stringsMatchNullN("sound", token.at, token.size)) {
                             char *name = getStringFromDataObjects(&data, &tokenizer);
                             entData.note->sound = findAsset(name);
@@ -615,6 +624,9 @@ void loadWorld(GameState *gameState, char *dir) {
                         }
                         if(stringsMatchNullN("solved", token.at, token.size)) {
                             entData.noteParent->solved = getBoolFromDataObjects(&data, &tokenizer);
+                        }
+                        if(stringsMatchNullN("showChildren", token.at, token.size)) {
+                            entData.noteParent->showChildren = getBoolFromDataObjects(&data, &tokenizer);
                         }
                         //add all notes for the sequence
                         if(stringsMatchNullN("noteSequenceIds", token.at, token.size)) {

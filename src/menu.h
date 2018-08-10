@@ -22,10 +22,15 @@ typedef struct {
     Font *font;
     //TODO: Make this platform independent
     SDL_Window *windowHandle;
+
+    V2 lastMouseP;
 } MenuInfo;
 
-void updateMenu(MenuOptions *menuOptions, GameButton *gameButtons, MenuInfo *info) {
+bool updateMenu(MenuOptions *menuOptions, GameButton *gameButtons, MenuInfo *info, Arena *arenaForSounds, WavFile *moveSound) {
+    bool active = true;
     if(wasPressed(gameButtons, BUTTON_DOWN)) {
+        active = false;
+        playMenuSound(arenaForSounds, moveSound, 0, AUDIO_BACKGROUND);
         info->menuCursorAt++;
         if(info->menuCursorAt >= menuOptions->count) {
             info->menuCursorAt = 0;
@@ -33,14 +38,17 @@ void updateMenu(MenuOptions *menuOptions, GameButton *gameButtons, MenuInfo *inf
     } 
     
     if(wasPressed(gameButtons, BUTTON_UP)) {
+        active = false;
+        playMenuSound(arenaForSounds, moveSound, 0, AUDIO_BACKGROUND);
         info->menuCursorAt--;
         if(info->menuCursorAt < 0) {
             info->menuCursorAt = menuOptions->count - 1;
         }
     }
+    return active;
 }
 
-void renderMenu(GLuint backgroundTexId, MenuOptions *menuOptions, MenuInfo *info) {
+void renderMenu(GLuint backgroundTexId, MenuOptions *menuOptions, MenuInfo *info, Lerpf *sizeTimers, float dt, float screenRelativeSize, V2 mouseP, bool mouseActive) {
     
     char *titleAt = menuOptions->options[info->menuCursorAt];
         
@@ -56,25 +64,51 @@ void renderMenu(GLuint backgroundTexId, MenuOptions *menuOptions, MenuInfo *info
     
     float xAt_ = (bufferWidth / 2);
     float yAt = yIncrement;
+    static float dtValue = 0;
+    dtValue += dt;
+
     for(int menuIndex = 0;
         menuIndex < menuOptions->count;
         ++menuIndex) {
+        
+        
+        float fontSize = screenRelativeSize;//mapValue(sin(dtValue), -1, 1, 0.7f, 1.2f);
+        if(sizeTimers) {
+            // updateLerpf(sizeTimers[menuIndex], dt, LINEAR);
+            fontSize = sizeTimers[menuIndex].value;
+        }
+
+        char *title = menuOptions->options[menuIndex];
+        float xAt = xAt_ - (getBounds(title, menuMargin, info->font, fontSize).x / 2);
+
+
+        Rect2f outputDim = outputText(info->font, xAt, yAt, bufferWidth, bufferHeight, title, menuMargin, COLOR_WHITE, fontSize, false);
+        //spread across screen so we hit is more easily
+        outputDim.min.x = 0;
+        outputDim.max.x = bufferWidth;
+        //
+        if(inBounds(mouseP, outputDim, BOUNDS_RECT) && mouseActive) {
+            info->menuCursorAt = menuIndex;
+        }
+
         V4 menuItemColor = COLOR_BLUE;
         
         if(menuIndex == info->menuCursorAt) {
             menuItemColor = COLOR_RED;
         }
         
-        char *title = menuOptions->options[menuIndex];
-        float xAt = xAt_ - (getBounds(title, menuMargin, info->font).x / 2);
-        outputText(info->font, xAt, yAt, bufferWidth, bufferHeight, title, menuMargin, menuItemColor, 1, true);
+        outputText(info->font, xAt, yAt, bufferWidth, bufferHeight, title, menuMargin, menuItemColor, fontSize, true);
+        
+        
+
         yAt += yIncrement;
     }
 }
 
-bool drawMenu(GameState *gameState, char *loadDir, MenuInfo *info, GameButton *gameButtons, Texture *backgroundTex) {
+bool drawMenu(GameState *gameState, char *loadDir, MenuInfo *info, GameButton *gameButtons, Texture *backgroundTex, WavFile *submitSound, WavFile *moveSound, float dt, float screenRelativeSize, V2 mouseP) {
     bool isPlayMode = false;
     MenuOptions menuOptions = {};
+
 
     if(wasPressed(gameButtons, BUTTON_ESCAPE)) {
         if(info->gameMode == PLAY_MODE) {
@@ -85,11 +119,21 @@ bool drawMenu(GameState *gameState, char *loadDir, MenuInfo *info, GameButton *g
             info->gameMode = PLAY_MODE;
         }
     }
+    bool mouseActive = false;
+    bool changeMenuKey = wasPressed(gameButtons, BUTTON_ENTER) || wasPressed(gameButtons, BUTTON_LEFT_MOUSE);
 
-    InfiniteAlloc tempTitles = initInfinteAlloc(char *);
+    bool mouseChangedPos = !(info->lastMouseP.x == mouseP.x && info->lastMouseP.y == mouseP.y);
 
+    //These are out of the switch scope because we have to render the menu before we release all the memory, so we do it at the end of the function
+    InfiniteAlloc tempTitles = initInfinteAlloc(char *); 
+    InfiniteAlloc tempStrings = initInfinteAlloc(char *);
+    //
+    
+    Lerpf *thisSizeTimers = 0;
     switch(info->gameMode) {
         case LOAD_MODE:{
+            
+
             FileNameOfType folderFileNames = getDirectoryFolders(loadDir);
             for(int folderIndex = 0; folderIndex < folderFileNames.count; folderIndex++) {
                 char *folderName = folderFileNames.names[folderIndex];
@@ -98,16 +142,27 @@ bool drawMenu(GameState *gameState, char *loadDir, MenuInfo *info, GameButton *g
                 assert(tempTitles.count > 0);
                 char **titlePtr = getElementFromAlloc(&tempTitles, folderIndex, char *);
                 assert(titlePtr[0]);
-                menuOptions.options[menuOptions.count++] = titlePtr[0]; 
+                char *timeStamp = titlePtr[0];
+                char *endStr;
+                time_t val = (time_t)strtoul(timeStamp, &endStr, 10);
+                
+                char *formattedTime = (char *)calloc(sizeof(char)*256, 1);
+                addElementInifinteAlloc_(&tempStrings, &formattedTime);
+
+                struct tm* tm_info = localtime(&val); //convert to local time 
+                sprintf(formattedTime, "%s\n", asctime(tm_info));
+                //strftime(formattedTime, 26, "%Y-%m-%d %H:%M:%S", tm_info);
+                
+                menuOptions.options[menuOptions.count++] = formattedTime; 
                 free(folderName);
             }
 
             menuOptions.options[menuOptions.count++] = "Go Back";
+
+            mouseActive = updateMenu(&menuOptions, gameButtons, info, &gameState->longTermArena, moveSound);
             
-            updateMenu(&menuOptions, gameButtons, info);
-            
-            if(wasPressed(gameButtons, BUTTON_ENTER)) {
-            
+            if(changeMenuKey) {
+                playMenuSound(&gameState->longTermArena, submitSound, 0, AUDIO_BACKGROUND);
                 if (info->menuCursorAt == menuOptions.count - 1) {
                     info->gameMode = info->lastMode;
                     info->menuCursorAt = 0;
@@ -122,15 +177,16 @@ bool drawMenu(GameState *gameState, char *loadDir, MenuInfo *info, GameButton *g
                 
                 info->lastMode = LOAD_MODE;
             }
-            
+
         } break;
         case QUIT_MODE:{
             menuOptions.options[menuOptions.count++] = "Really Quit?";
             menuOptions.options[menuOptions.count++] = "Go Back";
             
-            updateMenu(&menuOptions, gameButtons, info);
+            mouseActive = updateMenu(&menuOptions, gameButtons, info, &gameState->longTermArena, moveSound);
             
-            if(wasPressed(gameButtons, BUTTON_ENTER)) {
+            if(changeMenuKey) {
+                playMenuSound(&gameState->longTermArena, submitSound, 0, AUDIO_BACKGROUND);
                 switch (info->menuCursorAt) {
                     case 0: {
                         *info->running = false;
@@ -148,9 +204,10 @@ bool drawMenu(GameState *gameState, char *loadDir, MenuInfo *info, GameButton *g
             menuOptions.options[menuOptions.count++] = "Really Quit?";
             menuOptions.options[menuOptions.count++] = "Go Back";
             
-            updateMenu(&menuOptions, gameButtons, info);
+            mouseActive = updateMenu(&menuOptions, gameButtons, info, &gameState->longTermArena, moveSound);
             
-            if(wasPressed(gameButtons, BUTTON_ENTER)) {
+            if(changeMenuKey) {
+                playMenuSound(&gameState->longTermArena, submitSound, 0, AUDIO_BACKGROUND);
                 switch (info->menuCursorAt) {
                     case 0: {
                         *info->running = false;
@@ -167,9 +224,10 @@ bool drawMenu(GameState *gameState, char *loadDir, MenuInfo *info, GameButton *g
             menuOptions.options[menuOptions.count++] = "Save Progress";
             menuOptions.options[menuOptions.count++] = "Go Back";
             
-            updateMenu(&menuOptions, gameButtons, info);
+            mouseActive = updateMenu(&menuOptions, gameButtons, info, &gameState->longTermArena, moveSound);
             
-            if(wasPressed(gameButtons, BUTTON_ENTER)) {
+            if(changeMenuKey) {
+                playMenuSound(&gameState->longTermArena, submitSound, 0, AUDIO_BACKGROUND);
                 switch (info->menuCursorAt) {
                     case 0: {
                         char *dirName0 = concat(globalExeBasePath, "progress/");
@@ -197,9 +255,10 @@ bool drawMenu(GameState *gameState, char *loadDir, MenuInfo *info, GameButton *g
             menuOptions.options[menuOptions.count++] = "Settings";
             menuOptions.options[menuOptions.count++] = "Quit";
             
-            updateMenu(&menuOptions, gameButtons, info);
+            mouseActive = updateMenu(&menuOptions, gameButtons, info, &gameState->longTermArena, moveSound);
             
-            if(wasPressed(gameButtons, BUTTON_ENTER)) {
+            if(changeMenuKey) {
+                playMenuSound(&gameState->longTermArena, submitSound, 0, AUDIO_BACKGROUND);
                 switch (info->menuCursorAt) {
                     case 0: {
                         info->gameMode = PLAY_MODE;
@@ -231,9 +290,10 @@ bool drawMenu(GameState *gameState, char *loadDir, MenuInfo *info, GameButton *g
             menuOptions.options[menuOptions.count++] = soundOption;
             menuOptions.options[menuOptions.count++] = "Go Back";
             
-            updateMenu(&menuOptions, gameButtons, info);
+            mouseActive = updateMenu(&menuOptions, gameButtons, info, &gameState->longTermArena, moveSound);
             
-            if(wasPressed(gameButtons, BUTTON_ENTER)) {
+            if(changeMenuKey) {
+                playMenuSound(&gameState->longTermArena, submitSound, 0, AUDIO_BACKGROUND);
                 switch (info->menuCursorAt) {
                     case 0: {
                         if(isFullScreen) {
@@ -264,10 +324,11 @@ bool drawMenu(GameState *gameState, char *loadDir, MenuInfo *info, GameButton *g
             menuOptions.options[menuOptions.count++] = "Load";
             menuOptions.options[menuOptions.count++] = "Quit";
             
-            updateMenu(&menuOptions, gameButtons, info);
+            mouseActive = updateMenu(&menuOptions, gameButtons, info, &gameState->longTermArena, moveSound);
             
             // NOTE(Oliver): Main Menu action options
-            if(wasPressed(gameButtons, BUTTON_ENTER)) {
+            if(changeMenuKey) {
+                playMenuSound(&gameState->longTermArena, submitSound, 0, AUDIO_BACKGROUND);
                 switch (info->menuCursorAt) {
                     case 0: {
                         info->gameMode = PLAY_MODE;
@@ -291,15 +352,22 @@ bool drawMenu(GameState *gameState, char *loadDir, MenuInfo *info, GameButton *g
     } 
 
     if(!isPlayMode) {
-        renderMenu(backgroundTex->id, &menuOptions, info);
+        renderMenu(backgroundTex->id, &menuOptions, info, thisSizeTimers, dt, screenRelativeSize, mouseP, mouseChangedPos);
         setSoundType(AUDIO_FLAG_MENU);
     }
 
     for(int i = 0; i < tempTitles.count; ++i) {
         char **titlePtr = getElementFromAlloc(&tempTitles, i, char *);
         free(*titlePtr);
+
+        char **formatStringPtr = getElementFromAlloc(&tempStrings, i, char *);
+        free(*formatStringPtr);
     }
     releaseInfiniteAlloc(&tempTitles);
+    releaseInfiniteAlloc(&tempStrings);
+
+
+    info->lastMouseP = mouseP;
 
     return isPlayMode;
 }

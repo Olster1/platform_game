@@ -13,6 +13,7 @@ typedef struct {
     Array_Dynamic particleSystems;
     Array_Dynamic events;
     Array_Dynamic lights;
+    Array_Dynamic renderCircles;
 
     V2 mouseOffset;
     V2 interactStartingMouseP;
@@ -31,3 +32,20 @@ typedef struct {
     Entity_Commons *camera;
     
 } GameState;
+
+typedef enum {  
+    WORLD_RENDER,
+    SCREEN_RENDER,
+} RenderCircleType;
+
+typedef struct {
+    RenderCircleType type;
+    V3 pos;
+    LerpV3 dimLerp;
+    V4 color;
+    GLBufferHandles renderHandles;
+    int arrayIndex;
+
+
+} RenderCircle;
+

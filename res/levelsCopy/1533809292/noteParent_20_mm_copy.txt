@@ -1,0 +1,25 @@
+NoteParent: {
+	solved: false;
+	showChildren: false;
+	noteValueCount: 4;
+	noteParentType: "NOTE_PARENT_DEFAULT";
+	noteSequenceIds: [21, 22, 23, 24];
+	eventID: 4;
+
+}
+Commons: {
+	id: 20;
+	name: "(null)";
+	flags: 177;
+	type: "ENT_TYPE_DEFAULT";
+	position: 4.805440 2.281951 -1.000000;
+	velocity: 0.000000 0.000000 0.000000;
+	renderPosOffset: 0.000000 0.000000 0.000000;
+	dim: 1.000000 1.000000 1.000000;
+	renderScale: 1.000000 1.000000 1.000000;
+	shading: 1.000000 1.000000 1.000000 1.000000;
+	texture: "stevinus.png";
+	inverseWeight: 0.000000;
+	angle: 0.000000;
+
+}

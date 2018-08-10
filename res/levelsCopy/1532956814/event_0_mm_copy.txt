@@ -1,0 +1,15 @@
+Event: {
+	ID: 0;
+	type: "EVENT_DIALOG";
+	entId: 5;
+	dim: 2.000000 2.000000 2.000000;
+	flags: 7;
+	nextEventID: 1;
+	dialogCount: 2;
+	dialog: ["Light is the sound of nature, sound is the light of our world.
+", "The garden needs your help. You need to listen
+"];
+	dialogTimerPeriod: 2.000000;
+	dialogDisplayValue: 0.300000;
+
+}

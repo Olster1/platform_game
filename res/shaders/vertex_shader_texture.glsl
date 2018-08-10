@@ -1,10 +1,10 @@
 #version 150
 
 uniform mat4 PVM;
+uniform vec4 color;
 
 in vec3 vertex;
 in vec2 texUV;
-in vec4 color;
 
 out vec4 colorOut; //out going
 out vec2 texUV_out;

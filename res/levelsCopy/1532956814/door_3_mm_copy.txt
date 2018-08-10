@@ -1,0 +1,18 @@
+Door: {
+	partnerID: 4;
+
+}
+Commons: {
+	id: 3;
+	name: "(null)";
+	flags: 177;
+	type: "ENT_TYPE_DEFAULT";
+	position: -0.600000 1.900000 -1.000000;
+	renderPosOffset: 0.000000 0.000000 0.000000;
+	dim: 1.000000 1.000000 1.000000;
+	renderScale: 1.000000 1.000000 1.000000;
+	shading: 1.000000 1.000000 1.000000 1.000000;
+	texture: "door1.png";
+	inverseWeight: 0.000000;
+
+}

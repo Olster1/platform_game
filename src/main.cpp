@@ -48,6 +48,7 @@ static GameButton gameButtons[BUTTON_COUNT];
 #include "easy_text_io.h"
 #include "easy_sdl_joystick.h"
 #include "easy_perlin.h"
+#include "easy_tweaks.h"
 
 typedef struct {
     V3 pos;
@@ -153,6 +154,23 @@ void pushCurrentEvent(Event *event, Event **currentEvent) {
     setEventFlag(*currentEvent, EVENT_FRESH);
 }
 
+void pushRenderCircle(Array_Dynamic *array, V3 pos, V3 startDim, V3 endDim, float timeDelta, V4 color, RenderCircleType type) {
+    int index = addElement_(array, 0, array->sizeofType);
+    RenderCircle *cir = (RenderCircle *)getElement(array, index);
+    memset(cir, 0, sizeof(RenderCircle));
+    cir->arrayIndex = index;
+    cir->pos = pos;
+    cir->type = type;
+    cir->color = color;
+    cir->dimLerp.value = startDim;
+    setLerpInfoV3_s(&cir->dimLerp, endDim, timeDelta, &cir->dimLerp.value);
+}
+
+void removeRenderCircle(Array_Dynamic *renderCircles, RenderCircle *cir) {
+    removeElement_ordered(renderCircles, cir->arrayIndex);
+    OpenGLdeleteBufferHandles(&cir->renderHandles);
+}
+
 V2 transformWorldPToScreenP(V2 inputA, float zPos, float width, float height, V2 middleP) {
     V4 screenSpace = transformPositionV3ToV4(v2ToV3(inputA, zPos), projectionMatrixToScreen(width, height));
     V3 screenSpaceV3 = v3(inputA.x / screenSpace.w, inputA.y/ screenSpace.w, screenSpace.z / screenSpace.w);
@@ -211,7 +229,7 @@ void submitSoundToParent(Note *note, NoteParent **showPuzzleProgress, Timer *sho
             *showPuzzleProgressTimer = initTimer(2.0f);
             //
             playGameSound(&arena, getSoundAsset(solvedPuzzleSound), 0, AUDIO_FOREGROUND);
-            Reactivate(&parent->e->particleSystem);
+            Reactivate(parent->e->particleSystem);
             assert(!(*currentEvent));
             if(parent->eventToTrigger && !parent->solved) {
                 //only run the event if the puzzle was solved
@@ -264,6 +282,8 @@ int main(int argc, char *args[]) {
         int height_ = (int)(540);    
 
         V2 screenDim = v2(1280, 720);
+        // width_ = screenDim.x;
+        // height_ = screenDim.y;
         V2 resolution = v2(width_, height_);
 
         if(argc > 2) {
@@ -278,9 +298,13 @@ int main(int argc, char *args[]) {
         
         bufferWidth = resolution.x;
         bufferHeight = resolution.y;
+
+        //TODO: OTRHOGRAPHIC PROJECTIONS (ONES USEING PIXELS) HAVE TO GO THROUGH A SCALING MATRIX AS WELL
+        //TODO: USE IDEAL RESOLUTION TO BASE EVERTHING OFF
+        float screenRelativeSize = resolution.x / screenDim.x; 
         
         windowHandle = SDL_CreateWindow(
-            "Note Seeker",
+            "ADVENTURE",
             SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 
             screenDim.x, 
             screenDim.y, 
@@ -289,8 +313,8 @@ int main(int argc, char *args[]) {
         SDL_DisplayMode mode;
         SDL_GetCurrentDisplayMode(0, &mode);
         
-        float dt = 1.0f / (float)mode.refresh_rate; //use monitor refresh rate 
-        
+        float dt = 1.0f / min((float)mode.refresh_rate, 60.0f); //use monitor refresh rate 
+        float idealFrameTime = 1.0f / 60.0f;
         SDL_GL_SetAttribute(SDL_GL_SHARE_WITH_CURRENT_CONTEXT, 1); 
         SDL_GLContext threadContext = SDL_GL_CreateContext(windowHandle);
         SDL_GLContext renderContext = SDL_GL_CreateContext(windowHandle);
@@ -384,6 +408,9 @@ int main(int argc, char *args[]) {
         Asset *backgroundMusic = loadSoundAsset((concat(globalExeBasePath,(char *)"Chill.wav")), &audioSpec);
         Asset *backgroundMusic2 = loadSoundAsset((concat(globalExeBasePath,(char *)"Chill Major.wav")), &audioSpec);
         Asset *backgroundMusic3 = loadSoundAsset((concat(globalExeBasePath,(char *)"c_pad.wav")), &audioSpec);
+        Asset *menuSubmitSound = loadSoundAsset((concat(globalExeBasePath,(char *)"Clank1.wav")), &audioSpec);
+        Asset *menuMoveSound = loadSoundAsset((concat(globalExeBasePath,(char *)"menuSound.wav")), &audioSpec);
+        
         
         PlayingSound *firstSound = playGameSound(&arena, getSoundAsset(backgroundMusic3), 0, AUDIO_BACKGROUND);
         firstSound->nextSound = firstSound;
@@ -439,7 +466,7 @@ int main(int argc, char *args[]) {
         }
 
         Asset *doorTex = findAsset("door1.png");
-        Asset *skyTex = findAsset("sky_background.png");
+        Asset *skyTex = findAsset("sky_background.png");//bg3.jpg
         Asset *scrollTex = findAsset("scrollTexture2.jpg");
         Asset *blockTex = findAsset("moss_block1.bmp");
         Asset *noteTex = findAsset("MusicalNote.png");
@@ -457,19 +484,19 @@ int main(int argc, char *args[]) {
         ///////////////
 
         Collision_Object *collisionEnt = (Collision_Object *)getEmptyElement(&gameState->collisionEnts);
-        initCollisionEnt(&gameState->commons, collisionEnt, v3(1, 1, -1), scrollTex, 0, gameState->ID++);
+        initCollisionEnt(&gameState->commons, collisionEnt, &gameState->particleSystems, v3(1, 1, -1), scrollTex, 0, gameState->ID++);
         collisionEnt->e->dim.x = 30;
         assert(isFlagSet(collisionEnt->e, ENTITY_COLLISION));
 
         gameState->player = (Entity *)getEmptyElement(&gameState->entities);
-        initEntity(&gameState->commons, gameState->player, v3(1, 4, -1), doorTex, 1, gameState->ID++);
+        initEntity(&gameState->commons, gameState->player, &gameState->particleSystems, v3(1, 4, -1), doorTex, 1, gameState->ID++);
         setFlag(gameState->player->e, ENTITY_PLAYER);
         gameState->player->e->name = "player";
         gameState->player->e->animationParent = findAsset((char *)"knight animation");
         assert(gameState->player->e->animationParent);
         AddAnimationToList(gameState, &gameState->longTermArena, gameState->player->e, FindAnimation(gameState->KnightAnimations.anim, gameState->KnightAnimations.count, (char *)"Knight_Idle"));
 
-        gameState->camera = initEntityCommons(0, &gameState->commons, v3(0, 0, 0), 0, 0, gameState->ID++, ENTITY_TYPE_CAMERA);
+        gameState->camera = initEntityCommons(0, &gameState->commons, &gameState->particleSystems, v3(0, 0, 0), 0, 0, gameState->ID++, ENTITY_TYPE_CAMERA);
         gameState->camera->pos.z = 0;
         setFlag(gameState->camera, ENTITY_CAMERA);
         unSetFlag(gameState->camera, ENTITY_COLLIDES);
@@ -508,7 +535,8 @@ int main(int argc, char *args[]) {
         
         V2 middleP = v2(0.5f*bufferWidth, 0.5f*bufferHeight);
         
-        float ratio = 60 / 1;
+        float ratio = screenRelativeSize * 60.0f / 1.0f;
+        printf("%f\n", screenRelativeSize);
         Matrix4 metresToPixels = Matrix4_scale(mat4(), v3(ratio, ratio, 1));
 
         unsigned int lastTime = SDL_GetTicks();
@@ -519,8 +547,14 @@ int main(int argc, char *args[]) {
 
         V4 noteShades[NOTE_COUNT] = {COLOR_RED, COLOR_PINK, COLOR_GREEN, COLOR_YELLOW, COLOR_WHITE, COLOR_BLUE, COLOR_BLACK, v4(0.4f, 0.8f, 0.2f, 1.0f)};
 
+        easyJoyStickOpenControllers();
+
         Entity_Commons *lastSelectedEnt = 0;
         
+        Tweaker tweaker = {};
+        char *tweakFile = concat(globalExeBasePath, "../src/tweakFile.txt");
+        //refreshTweakFile(tweakFile, &tweaker);
+
         ///IMGUI variables
         float xPower = 60;
         float yPower = 1800;
@@ -528,7 +562,7 @@ int main(int argc, char *args[]) {
         bool gravityIsOn = true;
         float initWeight = 0;
         PlatformType platformType = PLATFORM_LINEAR_X;
-        bool followPlayer = false;
+        bool followPlayer = true;
         float distanceFromLayer = 0.4f;
 
 
@@ -605,12 +639,19 @@ int main(int argc, char *args[]) {
         NoteParent *lastNoteParent = 0;
         while(running) {
             testInt = 0;
+            if(refreshTweakFile(tweakFile, &tweaker)) {
+                gravityIsOn = getBoolFromTweakData(&tweaker, "gravityIsOn");
+                followPlayer = getBoolFromTweakData(&tweaker, "followPlayer"); 
+                globalSoundOn = getBoolFromTweakData(&tweaker, "globalSoundOn"); 
+            }   
+            
             //Save state of last frame game buttons 
             bool mouseWasDown = isDown(gameButtons, BUTTON_LEFT_MOUSE);
             bool mouseWasDownRight = isDown(gameButtons, BUTTON_RIGHT_MOUSE);
             bool leftArrowWasDown = isDown(gameButtons, BUTTON_LEFT);
             bool rightArrowWasDown = isDown(gameButtons, BUTTON_RIGHT);
             bool shiftWasDown = isDown(gameButtons, BUTTON_SHIFT);
+            bool spaceWasDown = isDown(gameButtons, BUTTON_SPACE);
             /////
             zeroArray(gameButtons);
             
@@ -732,6 +773,14 @@ int main(int argc, char *args[]) {
                 sdlProcessGameKey(&gameButtons[BUTTON_RIGHT_MOUSE], rightMouseDown, rightMouseDown == mouseWasDownRight);
             }
 
+            ////GET JOYSTICK INPUT
+            int controllersAvailable = easyJoyStickPoll();
+            if(controllersAvailable) {
+                assert(controllersAvailable > 0);
+                GameController firstController = globalControllerButtons[0];
+            }
+            ///////
+
             //////CLEAR BUFFERS 
             clearBufferAndBind(0, COLOR_PINK);
             clearBufferAndBind(finalCompositedBuffer.bufferId, COLOR_PINK);
@@ -742,8 +791,7 @@ int main(int argc, char *args[]) {
                 clearBufferAndBind(compositedBufferMultiSampled.bufferId, COLOR_PINK); 
             }
 #endif
-            if(drawMenu(gameState, loadProgressDir, &menuInfo, gameButtons, getTextureAsset(skyTex))) {
-            
+            if(drawMenu(gameState, loadProgressDir, &menuInfo, gameButtons, getTextureAsset(skyTex), getSoundAsset(menuSubmitSound), getSoundAsset(menuMoveSound), dt, screenRelativeSize, mouseP)) {
 
             renderDisableDepthTest(&globalRenderGroup);
             static GLBufferHandles backgroundBufferHandles = {};
@@ -757,7 +805,9 @@ int main(int argc, char *args[]) {
             }
             if(wasPressed(gameButtons, BUTTON_ENTER) && isDown(gameButtons, BUTTON_SHIFT)) {
                 gravityIsOn = !gravityIsOn;
+
             }
+
             //////
 
             //Event Interaction
@@ -847,7 +897,7 @@ int main(int argc, char *args[]) {
                             
                             static GLBufferHandles dialogBoundsHandles = {};
                             openGlDrawRectCenterDim(&dialogBoundsHandles, v3(0.5f*bufferWidth, y + 0.4f*dimHeight, -1), v2(bufferWidth, dimHeight), v4(0.6f, 0.6f, 0.6f, 0.6f), 0, mat4TopLeftToBottomLeft(bufferHeight), 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1));
-                            outputTextWithLength(&mainFont, x, y, bufferWidth, bufferHeight, text, stringCount, rect2fMinMax(0.2f*bufferWidth, 0, 0.8f*bufferWidth, bufferHeight), COLOR_BLACK, 1, true);
+                            outputTextWithLength(&mainFont, x, y, bufferWidth, bufferHeight, text, stringCount, rect2fMinMax(0.2f*bufferWidth, 0, 0.8f*bufferWidth, bufferHeight), COLOR_BLACK, screenRelativeSize, true);
                             
 
                             if(timeInfo.finished) {
@@ -880,6 +930,16 @@ int main(int argc, char *args[]) {
                 }
             // } 
 
+            float divisor = (dt / idealFrameTime);
+            Entity_Commons *pCommon = gameState->player->e;
+            if(isDown(gameButtons, BUTTON_SPACE)) {
+                pCommon->comeBackShading.value.w = 0.7f; //fade a bit
+                gameState->player->flags |= ((int)ENTITY_FLAG_INVISIBLE);
+            } else if(wasReleased(gameButtons, BUTTON_SPACE)) {
+                pCommon->comeBackShading.value.w = 1.0f; //fade a bit
+                gameState->player->flags &= (~((int)ENTITY_FLAG_INVISIBLE));
+            }
+
             if(!currentEvent){
                 ////PLAYER INPUT
                 
@@ -896,35 +956,47 @@ int main(int argc, char *args[]) {
                     inputAccel.y = -1;
                 }
                 
-                inputAccel.x = xPower*inputAccel.x;
-                inputAccel.y = yPower*inputAccel.y;
+                
+
+                inputAccel.x = (xPower)*inputAccel.x;
+                inputAccel.y = (yPower)*inputAccel.y;
             }
 
-            
+            float physTime = (float)dt / (float)idealFrameTime;
+            float remainder = physTime - ((int)physTime);
+            int loopCount = (int)ceil(physTime);
+            assert(remainder >= 0.0f);
+            assert(physTime >= 0.0f);
+            assert(loopCount >= 1);
+
             ////UPDATE CAMERA///
             if(followPlayer && !currentEvent) {
                 V3 relPos = v3_minus(gameState->player->e->pos, gameState->camera->pos);
                 V3 followDim = v3(2, 2, 2);
-#if 1
+#if 1   
                 float power = 100;
-                    V3 camForce = v3(0, 0, 0);
-                    if(absVal(relPos.x) > followDim.x) {
-                        camForce.x += power*signOf(relPos.x);
-                    }
-                    if(absVal(relPos.y) > followDim.y) {
-                        camForce.y += power*signOf(relPos.y);
-                    }
-                    if(absVal(relPos.z) > followDim.z) {
-                        camForce.z += power*signOf(relPos.z);
-                    }
+                V3 camForce = v3(0, 0, 0);
+                if(absVal(relPos.x) > followDim.x) {
+                    camForce.x += power*signOf(relPos.x);
+                }
+                if(absVal(relPos.y) > followDim.y) {
+                    camForce.y += power*signOf(relPos.y);
+                }
+                if(absVal(relPos.z) > followDim.z) {
+                    camForce.z += power*signOf(relPos.z);
+                }
 
-                    easy_phys_updatePosAndVel(&gameState->camera->pos, &gameState->camera->dP, camForce, dt, 0.6f);
+                for(int i = 0; i < loopCount; ++i) {
+                    float dtValue = getDtValue(idealFrameTime, i, dt, remainder);
+                    easy_phys_updatePosAndVel(&gameState->camera->pos, &gameState->camera->dP, camForce, dtValue, 0.6f);
+                }
 #else
                 float camDistFromPlayer = getLengthV3(relPos); 
                 if(camDistFromPlayer > distanceFromLayer) {
                     V3 targetCamPos = v2ToV3(player->e->pos.xy, player->e->pos.z + distanceFromLayer); // Does this trash the cache?? 
                     float transitionPeriod = 1;//camDistFromPlayer;//TODO: do we want to make it go faster/slower depending on the distance?
                     setLerpInfoV3_s(&cameraLerp, targetCamPos, transitionPeriod, &gameState->camera.pos);
+                    }
 
                 updateLerpV3(&cameraLerp, dt, SMOOTH_STEP_01);
                 }
@@ -1029,13 +1101,14 @@ int main(int argc, char *args[]) {
                     }
                 }
             }
+            bool playerIsInvisible = ((int)gameState->player->flags) & (int)ENTITY_FLAG_INVISIBLE;  
             ///////////////DOOR TELEPORTATION
             Door *door = 0;
             for(int entIndex = 0; entIndex < gameState->doorEnts.count; entIndex++) {
                 Door *ent = (Door *)getElement(&gameState->doorEnts, entIndex);
                 if(ent && isFlagSet(ent->e, ENTITY_VALID) && floatEqual_withError(ent->e->pos.z, gameState->player->e->pos.z)) {
                     Rect2f entBounds = rect2fCenterDimV2(ent->e->pos.xy, ent->e->dim.xy);
-                    if(inBounds(gameState->player->e->pos.xy, entBounds, BOUNDS_RECT)) {
+                    if(inBounds(gameState->player->e->pos.xy, entBounds, BOUNDS_RECT) && playerIsInvisible) {
                         door = ent;
                         
                         break;
@@ -1070,7 +1143,7 @@ int main(int argc, char *args[]) {
                             // don't do anything. 
                         } break;
                         case NOTE_PARENT_TIME: {    
-                            if(!ent->solved) {
+                            if(!ent->solved && ent->lookedAt) {
                                 TimerReturnInfo timeInfo = updateTimer(&ent->autoSoundTimer, dt);
                                 if(timeInfo.finished || !ent->autoPlaying) {
                                     ent->autoPlaying = true;
@@ -1079,8 +1152,9 @@ int main(int argc, char *args[]) {
                                         ent->autoSoundAt = 0;
                                     }
                                     assert(index < ent->noteValueCount && index >= 0);
-
-                                    submitSoundToParent(ent->sequence[index], &showPuzzleProgress, &showPuzzleProgressTimer, &bestPuzzleMatchSoFar, &puzzleProgressColorLerp, &currentEvent, solvedPuzzleSound, &lastNoteParent);
+                                    if(ent->sequence[index]->isPlayedByParent) {
+                                        submitSoundToParent(ent->sequence[index], &showPuzzleProgress, &showPuzzleProgressTimer, &bestPuzzleMatchSoFar, &puzzleProgressColorLerp, &currentEvent, solvedPuzzleSound, &lastNoteParent);
+                                    }
                                 }
                             }
                         } break;
@@ -1104,9 +1178,10 @@ int main(int argc, char *args[]) {
                         Asset *soundToPlay = notes[playingParentNote->sequence[0]->value];
                         playGameSound(&arena, getSoundAsset(soundToPlay), 0, AUDIO_FOREGROUND);
                         setChannelVolume(AUDIO_BACKGROUND, LOW_VOLUME, 0.5f);
-                        Reactivate(&playingParentNote->e->particleSystem);
+                        Reactivate(playingParentNote->e->particleSystem);
                         playingParentNote->e->shading = shadeColorForBlock;
                         setLerpInfoV4_s(&playingParentNote->shadingLerp, COLOR_WHITE, nextSoundPer, &playingParentNote->e->shading);
+                        parentNote->showChildren = true;
                     } else {
                         //This is for the enter hovering over the note parents. 
                         V3 posAt = parentNote->e->pos;
@@ -1130,6 +1205,7 @@ int main(int argc, char *args[]) {
                 if(info.finished) {
                     if(playingParentNote->soundAt >= playingParentNote->noteValueCount) {
                         assert(playingParentNote->soundAt <= playingParentNote->noteValueCount);
+                        playingParentNote->lookedAt = true;
                         playingParentNote = 0; //finished playing the sounds. 
                         setChannelVolume(AUDIO_BACKGROUND, MAX_VOLUME, 0.5f);
                     } else if(playingParentNote->soundAt < playingParentNote->noteValueCount) { //won't be the case if if there is only one note in the array
@@ -1138,13 +1214,16 @@ int main(int argc, char *args[]) {
 
                         Asset *soundToPlay = notes[playingParentNote->sequence[playingParentNote->soundAt++]->value];
                         playGameSound(&arena, getSoundAsset(soundToPlay), 0, AUDIO_FOREGROUND);
-                        Reactivate(&playingParentNote->e->particleSystem);
+                        Reactivate(playingParentNote->e->particleSystem);
                     }
                 }
             } 
            
             ////////////MUSIC NOTE INTERACTION//////////
+            static Note *hotNoteGUI = 0;
+            Note *nextHotNoteGUI = 0;
             Note *note = 0;
+            
             for(int entIndex = 0; entIndex < gameState->noteEnts.count; entIndex++) {
                 Note *ent = (Note *)getElement(&gameState->noteEnts, entIndex);
                 if(ent && isFlagSet(ent->e, ENTITY_VALID)) {
@@ -1153,15 +1232,53 @@ int main(int argc, char *args[]) {
                     float wiggleFactor = 0.2f;
                     ent->e->renderPosOffset.y = wiggleFactor*sin(TAU32*timerInfo.canonicalVal);
                     //
-                    
-                    if(floatEqual_withError(ent->e->pos.z, gameState->player->e->pos.z)) { 
-                        Rect2f entBounds = rect2fCenterDimV2(ent->e->pos.xy, ent->e->dim.xy);
-                        if(inBounds(gameState->player->e->pos.xy, entBounds, BOUNDS_RECT)) {
-                            note = ent;
+
+                    if(ent->parent->showChildren) {
+                        if(!ent->timerHasRun) {
+                            setLerpInfoV4_s(&ent->fadeInLerp, COLOR_WHITE, 1.0f, &ent->e->comeBackShading.value);
+                            ent->timerHasRun = true;
                         }
+                        updateLerpV4(&ent->fadeInLerp, dt, SMOOTH_STEP_01);
+
+                        if(floatEqual_withError(ent->e->pos.z, gameState->player->e->pos.z)) { 
+                            Rect2f entColBounds = rect2fCenterDimV2(ent->e->pos.xy, ent->e->dim.xy);
+
+                            if(inBounds(gameState->player->e->pos.xy, entColBounds, BOUNDS_RECT) && playerIsInvisible) {
+                                note = ent;
+                            }
+
+                            ////Click on note to play it. ///////////
+                            RenderInfo renderInfo = calculateRenderInfo(v3_plus(ent->e->pos, ent->e->renderPosOffset), v3_hadamard(ent->e->dim, ent->e->renderScale), gameState->camera->pos, metresToPixels);
+                            V3 transformedPos = renderInfo.transformPos;
+
+                            Rect2f entBounds = rect2fCenterDimV2(transformedPos.xy, renderInfo.transformDim.xy);
+
+                            entBounds.min = transformWorldPToScreenP(entBounds.min, transformedPos.z, bufferWidth, bufferHeight, middleP);
+                            entBounds.max = transformWorldPToScreenP(entBounds.max, transformedPos.z, bufferWidth, bufferHeight, middleP);
+#define CLICK_ON_NOTE_TO_PLAY 0
+#if CLICK_ON_NOTE_TO_PLAY
+                            if(inBounds(mouseP_yUp, entBounds, BOUNDS_RECT)) {
+                                if(wasPressed(gameButtons, BUTTON_LEFT_MOUSE)) {
+                                    playGameSound(&arena, getSoundAsset(ent->sound), 0, AUDIO_FOREGROUND);
+                                    pushRenderCircle(&gameState->renderCircles, ent->e->pos, v3(0.0f, 0.0f, 0.0f), v3(2.0f, 2.0f, 2.0f), 2.0f, COLOR_YELLOW, WORLD_RENDER);
+                                } else if(!hotNoteGUI || hotNoteGUI != ent) {
+                                    pushRenderCircle(&gameState->renderCircles, ent->e->pos, v3(2.0f, 2.0f, 2.0f), v3(0.0f, 0.0f, 0.0f), 1.0f, COLOR_YELLOW, WORLD_RENDER);
+                                }
+                                nextHotNoteGUI = ent;
+                            } 
+#endif
+                            //////////
+                        }
+                    } else {
+                        ent->e->comeBackShading.value = COLOR_NULL;
                     }
+
+                     if(debugUI_isOn) {
+                        ent->e->comeBackShading.value = COLOR_WHITE;   
+                     }
                 }
             }
+            hotNoteGUI = nextHotNoteGUI;
 
             if(isOn(&lastNoteTimer)) {
                 TimerReturnInfo timeInfo = updateTimer(&lastNoteTimer, dt);    
@@ -1255,9 +1372,10 @@ int main(int argc, char *args[]) {
 
                     ///////UPDATE PHYSICS HERE/////
                     V3 force = ent->ddP;
+                    
                     isNanErrorV3(force);
                     if(gravityIsOn && isFlagSet(ent, ENTITY_GRAVITY_AFFECTED)) {
-                        force.y = -gravityPower*ent->inverseWeight; //knock static objects gravity out with inverse weight. 
+                        force.y = -(gravityPower)*ent->inverseWeight; //knock static objects gravity out with inverse weight. 
 
                         ///////////THIS IS SO THE THINGS DON"T FALL OFF LEDGES
                         if(ent->inverseWeight > 0.0f && ent->type == ENT_TYPE_DEFAULT) {
@@ -1309,21 +1427,28 @@ int main(int argc, char *args[]) {
                         // if(isFlagSet(ent, ENTITY_PLAYER))   //TODO: OPTIMZIATION HERE
                         //////
                     }
+                    V3 extraForce = {};
                     if(isFlagSet(ent, ENTITY_PLAYER)) {
-                        force = v3_plus(inputAccel, v3_scale(ent->inverseWeight, force)); 
+                        extraForce = inputAccel; 
                     }
 
-                    
                     //Do multiple physics loop
-                    int loopCount = 1;
-                    float dragFactor = 0.2f/loopCount;
+                    
+                    float dragFactor = 0.2f;///((loopCount));
                     V4 shadedColor = COLOR_WHITE;
-                    float dtValue = dt;// / loopCount;
-                    for(int i = 0; i < loopCount; i++) {
+                    assert(loopCount >= 1);
+                    for(int loopIndex = 0; loopIndex < loopCount; loopIndex++) {
+                        
+                        float dtValue = getDtValue(idealFrameTime, loopIndex, dt, remainder);
                         isNanErrorV3(ent->dP);
+                        if(loopIndex > 0) {
+                            extraForce.y = 0; //get rid of the jump
+                        }
+                        V3 thisForce = v3_plus(extraForce, v3_scale(ent->inverseWeight, force)); 
+                    
                         if(isFlagSet(ent, ENTITY_ACTIVE)) {
-                            ent->pos = v3_plus(ent->pos, v3_plus(v3_scale(sqr(dtValue), force),  v3_scale(dtValue, ent->dP)));
-                            ent->dP = v3_plus(ent->dP, v3_minus(v3_scale(dtValue, force), v3_scale(dragFactor, ent->dP)));
+                            ent->pos = v3_plus(ent->pos, v3_plus(v3_scale(sqr(dtValue), thisForce),  v3_scale(dtValue, ent->dP)));
+                            ent->dP = v3_plus(ent->dP, v3_minus(v3_scale(dtValue, thisForce), v3_scale(dragFactor, ent->dP)));
                         }
                         isNanErrorV3(ent->pos);
                         isNanErrorV3(ent->dP);
@@ -1560,11 +1685,18 @@ int main(int argc, char *args[]) {
         for(int entIndex = 0; entIndex < gameState->commons.count; entIndex++) {
             Entity_Commons *ent = (Entity_Commons *)getElement(&gameState->commons, entIndex);
             if(ent && isFlagSet(ent, ENTITY_VALID) && !isFlagSet(ent, ENTITY_CAMERA)) {
-                drawAndUpdateParticleSystem(&ent->particleSystem, dt, ent->pos, v3(0, 0, 0), gameState->camera->pos, metresToPixels);
+                drawAndUpdateParticleSystem(ent->particleSystem, dt, ent->pos, v3(0, 0, 0), gameState->camera->pos, metresToPixels);
             }
         }
+        
+        typedef struct {
+            NoteParent *parent;
+            int index;
+        } PuzzleNoteHelper;
         ////////////
         //DRAW PUZZLE PROGRESS
+        static PuzzleNoteHelper hotHelperParent = {};
+        PuzzleNoteHelper nextHelperParent = {};
         if(showPuzzleProgress) {
             NoteParent *parent = showPuzzleProgress;
             float yAtMin = 0.2f*bufferHeight;
@@ -1575,7 +1707,8 @@ int main(int argc, char *args[]) {
             for(int noteIndex = 0; noteIndex < parent->noteValueCount; ++noteIndex) {
                 assert(noteIndex < MAX_NOTE_SEQUENCE_SIZE);
                 //TODO: take account of minor notes. 
-                float value = (float)parent->sequence[noteIndex]->value / (float)NOTE_COUNT;
+                Note *thisNote = parent->sequence[noteIndex];
+                float value = (float)thisNote->value / (float)NOTE_COUNT;
                 float yAt = lerp(yAtMin, value, yAtMax);
                 xAt += widthPerNote;
 
@@ -1591,14 +1724,51 @@ int main(int argc, char *args[]) {
 
                 GLBufferHandles *thisRenderHandle = &parent->puzzleProgressRenderHandles[noteIndex];
 
-                // if(bestPuzzleMatchSoFar != lastBestPuzzleMatch && thisRenderHandle->valid) {
-                //     OpenGLdeleteBufferHandles(thisRenderHandle);
-                // }
-                openGlDrawCircle(thisRenderHandle, v3(xAt, yAt, -1), v2(70, 70), color, mat4TopLeftToBottomLeft(bufferHeight), 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1), mat4());
+                //MAKE THIS MORE SCREEN RESOLUTION INDEPENENT
+                V2 circleDim = v2(70, 70);
+                V3 helperPos = v3(xAt, yAt, -1);
+                Rect2f circleBounds = rect2fCenterDim(xAt, yAt, 0.3f*circleDim.x, 0.3f*circleDim.y);
+                if(inBounds(mouseP, circleBounds, BOUNDS_CIRCLE)) {
+                    if(wasPressed(gameButtons, BUTTON_LEFT_MOUSE)) {
+                        playGameSound(&arena, getSoundAsset(thisNote->sound), 0, AUDIO_FOREGROUND);
+                        pushRenderCircle(&gameState->renderCircles, helperPos, v3(0.0f, 0.0f, 0.0f), v3(30.0f, 30.0f, 30.0f), 2.0f, COLOR_YELLOW, SCREEN_RENDER);
+                    } else if(!hotHelperParent.parent || hotHelperParent.parent != parent || (hotHelperParent.parent == parent && hotHelperParent.index != noteIndex)) {
+                        pushRenderCircle(&gameState->renderCircles, helperPos, v3(15.0f, 15.0f, 15.0f), v3(0.0f, 0.0f, 0.0f), 0.7f, COLOR_YELLOW, SCREEN_RENDER);
+                    }
+                    nextHelperParent.index = noteIndex;
+                    nextHelperParent.parent = parent;
+                }
+                openGlDrawCircle(thisRenderHandle, helperPos, circleDim, color, mat4TopLeftToBottomLeft(bufferHeight), 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1), mat4());
             }
         }
+        hotHelperParent = nextHelperParent;
+        //printf("%d\n", hotHelperParent.index);
         lastBestPuzzleMatch = bestPuzzleMatchSoFar;
         //  
+
+        /////Render Circle array
+        for(int entIndex = 0; entIndex < gameState->renderCircles.count; entIndex++) {
+            RenderCircle *ent = (RenderCircle *)getElement(&gameState->renderCircles, entIndex);
+            if(ent) {
+                bool wasLerpOn = isOn(&ent->dimLerp.timer);
+                updateLerpV3(&ent->dimLerp, dt, SMOOTH_STEP_01);
+                bool isLerpOn = isOn(&ent->dimLerp.timer);
+                
+                V4 ringColor = smoothStep00V4(COLOR_NULL, ent->dimLerp.timer.value, ent->color);
+                if(ent->type == WORLD_RENDER) {
+                    RenderInfo renderInfo = calculateRenderInfo(ent->pos, ent->dimLerp.value, gameState->camera->pos, metresToPixels);
+                    openGlDrawRing(&ent->renderHandles, renderInfo.pos, renderInfo.dim.xy, ringColor, mat4(), 1, renderInfo.pvm, projectionMatrixToScreen(bufferWidth, bufferHeight));
+                } else if(ent->type == SCREEN_RENDER){
+                    openGlDrawRing(&ent->renderHandles, ent->pos, v2_scale(10, ent->dimLerp.value.xy), ringColor, mat4TopLeftToBottomLeft(bufferHeight), 1, mat4(), OrthoMatrixToScreen(bufferWidth, bufferHeight, 1));
+                }
+                
+                if(wasLerpOn && !isLerpOn) {
+                    removeRenderCircle(&gameState->renderCircles, ent);
+                }
+                                    
+            }
+        }
+        
     
 #if DEVELOPER_MODE
             if(wasPressed(gameButtons, BUTTON_LEFT_MOUSE)) {
@@ -1640,27 +1810,40 @@ int main(int argc, char *args[]) {
                             switch((EntType)entityType) {
                                 case ENTITY_TYPE_ENTITY: {
                                     Entity *newEnt = (Entity *)getEmptyElement(&gameState->entities);
-                                    initEntity(&gameState->commons, newEnt, initPos, crateTex, 1, gameState->ID++);
+                                    initEntity(&gameState->commons, newEnt, &gameState->particleSystems, initPos, crateTex, 1, gameState->ID++);
                                     addToUndoBufferIndex(&gameState->undoBuffer, CREATE_ENTITY, newEnt->e);
+                                } break;
+                                case ENTITY_TYPE_PARTICLE_SYSTEM: {
+                                    Entity_Commons *newEnt = (Entity_Commons *)getEmptyElement(&gameState->commons);
+                                    initEntityCommons_(0, newEnt, &gameState->particleSystems, initPos, 0, 1, gameState->ID++, ENTITY_TYPE_PARTICLE_SYSTEM);
+                                    newEnt->entType = ENTITY_TYPE_PARTICLE_SYSTEM;
+                                    newEnt->particleSystem->Set.Loop = true;
+                                    newEnt->particleSystem->Active = true;
+                                    Rect2f velBias = rect2fMinMax(-2, -2, 2, 2);
+                                    newEnt->particleSystem->Set.VelBias = velBias;
+                                    //newEnt->particleSystem->Set.BitmapCount = 0;
+                                    unSetFlag(newEnt, ENTITY_GRAVITY_AFFECTED);
+                                    unSetFlag(newEnt, ENTITY_COLLIDES);
+                                    addToUndoBufferIndex(&gameState->undoBuffer, CREATE_ENTITY, newEnt);
                                 } break;
                                 case ENTITY_TYPE_LIGHT: {
                                     Light *newEnt = (Light *)getEmptyElement(&gameState->lights);
                                     float flux = 10;
-                                    initLight(&gameState->commons, newEnt, initPos, flux, gameState->ID++);
+                                    initLight(&gameState->commons, newEnt, &gameState->particleSystems, initPos, flux, gameState->ID++);
                                     addToUndoBufferIndex(&gameState->undoBuffer, CREATE_ENTITY, newEnt->e);
                                 } break;
                                 case ENTITY_TYPE_COLLISION: {
                                     Collision_Object *newEnt = (Collision_Object *)getEmptyElement(&gameState->collisionEnts);
-                                    initCollisionEnt(&gameState->commons, newEnt, initPos, scrollTex, initWeight, gameState->ID++);
+                                    initCollisionEnt(&gameState->commons, newEnt, &gameState->particleSystems, initPos, scrollTex, initWeight, gameState->ID++);
                                     addToUndoBufferIndex(&gameState->undoBuffer, CREATE_ENTITY, newEnt->e);
                                 } break;
                                 case ENTITY_TYPE_DOOR: {
                                     Door *newEnt = (Door *)getEmptyElement(&gameState->doorEnts);
-                                    initDoorEnt(&gameState->commons, newEnt, initPos, doorTex, gameState->ID++);
+                                    initDoorEnt(&gameState->commons, newEnt, &gameState->particleSystems, initPos, doorTex, gameState->ID++);
                                     addToUndoBufferIndex(&gameState->undoBuffer, CREATE_ENTITY, newEnt->e);
 
                                     Door *newEnt2 = (Door *)getEmptyElement(&gameState->doorEnts);
-                                    initDoorEnt(&gameState->commons, newEnt2, initPos, doorTex, gameState->ID++);
+                                    initDoorEnt(&gameState->commons, newEnt2, &gameState->particleSystems, initPos, doorTex, gameState->ID++);
                                     newEnt2->e->pos = v3_plus(initPos, v3(1, 1, 0));
                                     addToUndoBufferIndex(&gameState->undoBuffer, CREATE_ENTITY, newEnt2->e);
                                     newEnt2->partner = newEnt;
@@ -1668,7 +1851,7 @@ int main(int argc, char *args[]) {
                                 } break;
                                 case ENTITY_TYPE_PLATFORM: {
                                     Entity *newEnt = (Entity *)getEmptyElement(&gameState->platformEnts);
-                                    initPlatformEnt(&gameState->commons, newEnt, initPos, blockTex, gameState->ID++, platformType);
+                                    initPlatformEnt(&gameState->commons, newEnt, &gameState->particleSystems, initPos, blockTex, gameState->ID++, platformType);
                                     addToUndoBufferIndex(&gameState->undoBuffer, CREATE_ENTITY, newEnt->e);
                                 } break;
                                 // case ENTITY_TYPE_NOTE: {
@@ -1686,7 +1869,7 @@ int main(int argc, char *args[]) {
                                 case ENTITY_TYPE_NOTE_PARENT: {
                                     if(noteBuf[0] != '\0') {
                                         NoteParent *newEnt = (NoteParent *)getEmptyElement(&gameState->noteParentEnts);
-                                        initNoteParentEnt(&gameState->commons, newEnt, initPos, currentNoteParentType, stevinusTex, gameState->ID++);
+                                        initNoteParentEnt(&gameState->commons, newEnt, &gameState->particleSystems, initPos, currentNoteParentType, stevinusTex, gameState->ID++);
                                         mostRecentParentNote = newEnt;
                                         char *at = noteBuf;
                                         while(*at) {
@@ -1706,7 +1889,7 @@ int main(int argc, char *args[]) {
 
                                                 V3 notePos = v3(initPos.x + x, initPos.y + y, initPos.z);
 
-                                                initNoteEnt(&gameState->commons, newNoteEnt, notePos, noteTex, noteSound, gameState->ID++);
+                                                initNoteEnt(&gameState->commons, newNoteEnt, &gameState->particleSystems, notePos, noteTex, noteSound, gameState->ID++);
 
                                                 newNoteEnt->parent = mostRecentParentNote;
                                                 assert(newNoteEnt->parent);
@@ -1738,12 +1921,12 @@ int main(int argc, char *args[]) {
                                 } break;
                                 case ENTITY_TYPE_SCENARIO: {
                                     Entity *newEnt = (Entity *)getEmptyElement(&gameState->entities);
-                                    initScenarioEnt(&gameState->commons, newEnt, initPos, currentTex, gameState->ID++);
+                                    initScenarioEnt(&gameState->commons, newEnt, &gameState->particleSystems, initPos, currentTex, gameState->ID++);
                                     addToUndoBufferIndex(&gameState->undoBuffer, CREATE_ENTITY, newEnt->e);
                                 } break;
                                 case ENTITY_TYPE_NPC: {
                                     NPC *newEnt = (NPC *)getEmptyElement(&gameState->npcEntities);
-                                    initNPCEnt(&gameState->commons, &gameState->events, newEnt, initPos, doorTex, 1, gameState->ID++, gameState->eventID++);
+                                    initNPCEnt(&gameState->commons, &gameState->events, newEnt, &gameState->particleSystems, initPos, doorTex, 1, gameState->ID++, gameState->eventID++);
                                     addDialog(newEnt->event, (char *)"Light is the sound of nature, sound is the light of our world.\n");
                                     addDialog(newEnt->event, (char *)"The garden needs your help. You need to listen\n");
 
@@ -1809,6 +1992,67 @@ int main(int argc, char *args[]) {
                 }
 #if IMGUI_ON
             if(debugUI_isOn) {
+                //THIS IS THE PARTICLE SYSTEM TYPE
+                if(interacting.e->entType == ENTITY_TYPE_PARTICLE_SYSTEM) {
+                    ImGui::Begin("Particle System Panel");
+
+                    
+
+                    particle_system *partSys = interacting.e->particleSystem;
+                    particle_system_settings *set = &interacting.e->particleSystem->Set;
+
+                    //ImGui::InputFloat("Life Span", &set->LifeSpan);
+                    ImGui::InputFloat("Life Span Of System", &set->MaxLifeSpan);
+                    ImGui::Checkbox("Loop", &set->Loop);
+                    ImGui::Checkbox("Collides with Floor", &set->collidesWithFloor);
+
+                    float lifeSpan_denominator = 1.0f / partSys->creationTimer.period;
+                    ImGui::InputFloat("Particle Life Span", &lifeSpan_denominator);
+                    partSys->creationTimer.period = 1.0f  / lifeSpan_denominator;
+
+                    static int particleBitmapAt = 1;
+                    ImGui::ListBox("textures\n", &particleBitmapAt, texNames, texCount, 4);
+
+                    char *name = (char *)texNames[particleBitmapAt];
+                    Asset *newBitmapAsset = findAsset(name);
+                    assert(newBitmapAsset);
+                    
+                    if (ImGui::Button("Push Bitmap")) { 
+                        if(set->BitmapCount < arrayCount(set->Bitmaps)) {
+                            pushParticleBitmap(set, getTextureAsset(newBitmapAsset), newBitmapAsset->name);
+                        }
+                    }
+                    if(set->BitmapCount > 0) {
+                        static int particleBitmapRemoveAt = 0;
+                        
+                        ImGui::ListBox("pushed bitmaps\n", &particleBitmapRemoveAt, set->BitmapNames, set->BitmapCount, 4);
+
+                        if (ImGui::Button("Remove Bitmap")) { 
+                            removeParticleBitmap(set, particleBitmapRemoveAt);
+                        }
+                    }
+
+                    ImGui::InputFloat2("Min Pos", set->posBias.min.E);
+                    ImGui::InputFloat2("Max Pos", set->posBias.max.E);
+
+                    ImGui::InputFloat2("Min Vel", set->VelBias.min.E);
+                    ImGui::InputFloat2("Max Vel", set->VelBias.max.E);
+
+                    bool ReactivateSystem_ = false;
+                    if(ImGui::Checkbox("Reactivate", &ReactivateSystem_)) {
+                        Reactivate(interacting.e->particleSystem);
+                    }
+                    
+                    // unsigned int BitmapCount;
+                    // Texture *Bitmaps[32];
+                    // unsigned int BitmapIndex;
+
+                    //ParticleSystemType type;
+
+                    ImGui::End();
+                }
+                //
+
                 ImGui::Begin("Entity Info");
                 ImGui::InputInt("ID", &interacting.e->ID);            
                 ImGui::InputFloat3("Position", interacting.e->pos.E);            
@@ -1905,11 +2149,11 @@ int main(int argc, char *args[]) {
                     Entity_Commons *newCommons = 0;
                     if(isFlagSet(interEnt, ENTITY_COLLISION)) {
                         Collision_Object *newEnt = (Collision_Object *)getEmptyElement(&gameState->collisionEnts);
-                        initCollisionEnt(&gameState->commons, newEnt, v3_plus(interEnt->pos, offsetP), interEnt->tex, interEnt->inverseWeight, gameState->ID++);
+                        initCollisionEnt(&gameState->commons, newEnt, &gameState->particleSystems, v3_plus(interEnt->pos, offsetP), interEnt->tex, interEnt->inverseWeight, gameState->ID++);
                         newCommons = newEnt->e;
                     } else {
                         Entity *newEnt = (Entity *)getEmptyElement(&gameState->entities);
-                        initEntity(&gameState->commons, newEnt, v3_plus(interEnt->pos, offsetP), interEnt->tex, interEnt->inverseWeight, gameState->ID++);
+                        initEntity(&gameState->commons, newEnt, &gameState->particleSystems, v3_plus(interEnt->pos, offsetP), interEnt->tex, interEnt->inverseWeight, gameState->ID++);
                         newCommons = newEnt->e;
                     }
                     
@@ -1926,6 +2170,7 @@ int main(int argc, char *args[]) {
 #if IMGUI_ON
             if(debugUI_isOn) {
                 ImGui::Begin("SaveLoad");
+                static char saveDir[256] = "level1";
                 //LOAD WORLD button
                 FileNameOfType folderFileNames = getDirectoryFolders(loadDir);
 
@@ -1957,6 +2202,7 @@ int main(int argc, char *args[]) {
                     free(dirNameExe);
                     free(dirName0);
                     free(finalDirName);
+                    memcpy(saveDir, loadDirName, sizeof(char)*strlen(loadDirName));
                 }
                 /////
 
@@ -1964,7 +2210,7 @@ int main(int argc, char *args[]) {
                 static LerpV4 saveTimerDisplay = initLerpV4();
                 static V4 saveColor = COLOR_NULL;
 
-                static char saveDir[256] = "level1";
+                
                 ImGui::InputText("Save Level directory", saveDir, IM_ARRAYSIZE(saveDir));
                 static bool callSaveWorld = false;
                 static bool createdDirectory = false;
@@ -2128,6 +2374,8 @@ int main(int argc, char *args[]) {
                 //ImGui::SliderFloat("Gravity Power", &gravityPower, 0, 200);            
                 
                 ImGui::RadioButton("DEFAULT", (int *)(&entityType), (int)ENTITY_TYPE_ENTITY); ImGui::SameLine();
+                ImGui::RadioButton("PARTICLE_SYSTEM", (int *)(&entityType), (int)ENTITY_TYPE_PARTICLE_SYSTEM); ImGui::SameLine();
+                
                 ImGui::RadioButton("COLLISION", (int *)(&entityType), (int)ENTITY_TYPE_COLLISION); ImGui::SameLine();
                 ImGui::RadioButton("DOOR", (int *)(&entityType), (int)ENTITY_TYPE_DOOR); ImGui::SameLine();
                 ImGui::RadioButton("PLATFORM", (int *)(&entityType), (int)ENTITY_TYPE_PLATFORM); ImGui::SameLine();
@@ -2266,13 +2514,13 @@ int main(int argc, char *args[]) {
                 glBindFramebuffer(GL_FRAMEBUFFER, lightFrameBuffer.bufferId); //go to final composite buffer
                 setFrameBufferId(&globalRenderGroup, lightFrameBuffer.bufferId);
                  
-                float darknessAlpha = 0.8f;
+                float darknessAlpha = 1.0f;
                 V4 backgroundColor = v4(0, 0, 0, darknessAlpha);
 
                 // glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
                 // glStencilMask(0x00);
                 
-                openGlDrawRectCenterDim(&lightBackgroundHandle, v3(0.5f*bufferWidth, 0.5f*bufferHeight, gameState->camera->pos.z - 0.1f), v2(bufferWidth, bufferHeight), backgroundColor, 0, mat4TopLeftToBottomLeft(bufferHeight), 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1));                
+                //openGlDrawRectCenterDim(&lightBackgroundHandle, v3(0.5f*bufferWidth, 0.5f*bufferHeight, gameState->camera->pos.z - 0.1f), v2(bufferWidth, bufferHeight), backgroundColor, 0, mat4TopLeftToBottomLeft(bufferHeight), 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1));                
 
                 //////Keep the  background color and don't add the light Color, will the alpha, belnd the alpha but don't add the source alpha since it will accumulate. Want to dilute the alpha. 
                 
@@ -2306,7 +2554,7 @@ int main(int argc, char *args[]) {
                 glDisable(GL_DEPTH_TEST);
                 static float menuT = 0;
                 menuT += dt;
-                float lightWidth = bufferHeight*lerp(0.8f, inverse_lerp(-1, sin(3*menuT), 1.6f), 1);
+                float lightWidth = bufferHeight*lerp(0.95f, inverse_lerp(-1, sin(3*menuT), 1.6f), 1.4f);
                 
                 openGlDrawRectCenterDim(&lightBackgroundHandle, v3(0.5f*bufferWidth, 0.5f*bufferHeight, gameState->camera->pos.z - 0.1f), v2(bufferWidth, bufferHeight), v4(0, 0, 0, 0.9f), 0, mat4TopLeftToBottomLeft(bufferHeight), 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1));                
                 setBlendFuncType(&globalRenderGroup, BLEND_FUNC_ZERO_ONE_ZERO_ONE_MINUS_ALPHA);
@@ -2325,6 +2573,8 @@ int main(int argc, char *args[]) {
             static GLBufferHandles lightBufferHandles = {};
             openGlTextureCentreDim(&lightBufferHandles, lightFrameBuffer.textureId, v2ToV3(middleP, -1), v2(bufferWidth, bufferHeight), COLOR_WHITE, 0, mat4(), 1, mat4(), OrthoMatrixToScreen(bufferWidth, bufferHeight, 1));
 
+                
+
                         
             drawRenderGroup(&globalRenderGroup);
 
@@ -2342,6 +2592,29 @@ int main(int argc, char *args[]) {
             unsigned int now = SDL_GetTicks();
             float timeInFrameSeconds = (now - lastTime);
             //TODO: Do our own wait if Vsync isn't on. 
+            //NOTE: This is us choosing the best frame time within the intervals of possible frame rates!!!
+            dt = timeInFrameSeconds / 1000;
+            float frameRates[] = {idealFrameTime*1.0f, idealFrameTime*2.0f, idealFrameTime*4.0f};
+            float smallestDiff = 0;
+            bool set = false;
+            float newRate = idealFrameTime;
+            for(int i = 0; i < arrayCount(frameRates); ++i) {
+                float val = frameRates[i];
+                float diff = dt - val;
+                if(diff < 0.0f) {
+                    diff *= -1;
+                }
+                if(diff < smallestDiff || !set) {
+                    set = true;
+                    smallestDiff = diff;
+                    newRate = val;
+                }
+            }
+            dt = newRate;
+            assert(dt <= frameRates[2]);
+            /////
+
+
 #if DEVELOPER_MODE
             if(debugUI_isOn) 
             {
@@ -2369,5 +2642,14 @@ int main(int argc, char *args[]) {
             SDL_GL_SwapWindow(windowHandle);
             
         }
+        //ImGui::DestroyContext();
+
+        easyJoyStickCloseControllers();
+
+        SDL_GL_DeleteContext(renderContext);
+        SDL_DestroyWindow(windowHandle);
+        SDL_Quit();
+
     }
+        
 }

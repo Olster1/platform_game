@@ -1,0 +1,3 @@
+gravityIsOn: true;
+followPlayer: true;
+globalSoundOn: true;

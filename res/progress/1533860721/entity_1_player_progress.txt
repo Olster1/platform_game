@@ -1,0 +1,20 @@
+Entity: {
+
+}
+Commons: {
+	id: 1;
+	name: "player";
+	flags: 251;
+	type: "ENT_TYPE_DEFAULT";
+	position: -0.143709 2.189891 -1.000000;
+	velocity: 0.000000 0.404040 0.000000;
+	renderPosOffset: 0.000000 0.000000 0.000000;
+	dim: 1.000000 1.000000 1.000000;
+	renderScale: 1.000000 1.000000 1.000000;
+	shading: 1.000000 1.000000 1.000000 1.000000;
+	texture: "door1.png";
+	inverseWeight: 1.000000;
+	angle: 0.000000;
+	animation: "knight animation";
+
+}

@@ -1,22 +1,17 @@
-[] When you select item why is the camera Z - pos instead of reverse
-[] Make camera more responsive 
-[] Draw player last & change depth buffer to <=
-
 [] Put platform invisible structures for platforms in the y-axis
 [] change undo to circular buffer
-[] Do basic AI for NPC character
 
-[] Have a push renderer to buffer openGL calls -> the font rendering is slow
-[] Have player progress saved -> new directory that loads on top and has things like solved & saved positions of entities
 
-[] Introspect the different types data -> edit note parent sequence
-[] Make menu
-[] Make load level event 
-[] Make authoring events easier 
-[] make save state for progress
-
-[] Have pop up of how successful you are in the note puzzle -> fade away when you get one wrong 
-[] Have notes that can be anything and you can program bots to fill them in -> platforms moving up and notes on ledges 
 [] Control note playing timers -> blocks coming down to play notes
 [] Have time based note puzzles -> have a line moving across the note helper 
 [] Have air to lift blocks up 
+
+1. Have _chord_ puzzles. 
+2. Have the order be none descriptive -> just the sound to get it correct. 
+3. Have puzzles play at the same time so you have to set the timer on the different note parents. 
+4. Have Notes be able to trigger other note parents. 
+5. Have the note light up then fade away if it isn;t in order
+6. click on notes to hear them
+7. Have notes appear once you listen to the ariginal sequence. 
+8. Do invisble collision boxes for platforms
+9. Have overworld type game like the swapper. 

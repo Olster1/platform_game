@@ -50,6 +50,7 @@ typedef struct {
 static int channelVolumes_[AUDIO_CHANNEL_COUNT] = {MAX_VOLUME, MAX_VOLUME};
 static VolumeLerp channelVolumesLerps_[AUDIO_CHANNEL_COUNT] = {};
 static SoundType globalSoundActiveType_ = AUDIO_FLAG_NULL;
+static bool globalSoundOn = false;
 
 bool isSoundTypeSet(SoundType type) {
     bool result = (globalSoundActiveType_ == type);
@@ -329,7 +330,10 @@ SDL_AUDIO_CALLBACK(audioCallback) {
             
             unsigned int bytesToWrite = (remainingBytes < len) ? remainingBytes: len;
             
-            int volume = channelVolumes_[sound->channel];
+            int volume = 0;
+            if(globalSoundOn) {
+                volume = channelVolumes_[sound->channel];
+            }
             SDL_MixAudio(stream, samples, bytesToWrite, volume);
             
             sound->bytesAt += bytesToWrite;

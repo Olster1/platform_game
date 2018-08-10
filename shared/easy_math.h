@@ -141,6 +141,11 @@ V3 v3(float x, float y, float z) {
     return result;
 }
 
+bool v4Equal(V4 a, V4 b) {
+    bool result = (a.x == b.x && a.y == b.y && a.z == b.z && a.w == b.w);
+    return result;
+}
+
 V4 v3ToV4Homogenous(V3 a) {
     V4 result = v4(a.x, a.y, a.z, 1);
     return result;
@@ -738,7 +743,6 @@ float lerp_bounded(float a, float t, float b) {
     return value;
 }
 
-
 float inverse_lerp(float a, float c, float b) {
     float denominator = (b - a);
     float t = 0;
@@ -747,6 +751,12 @@ float inverse_lerp(float a, float c, float b) {
     }
     
     return t;
+}
+
+float mapValue(float value, float minA, float maxA, float minB, float maxB) {
+    float result = inverse_lerp(minA, value, maxA);
+    result = lerp(minB, result, maxB);
+    return result;
 }
 
 
@@ -759,6 +769,17 @@ float smoothStep01(float a, float t, float b) {
 float smoothStep00(float a, float t, float b) {
     float mappedT = sin(t*PI32);
     float value = lerp(a, mappedT, b);
+    return value;
+}
+
+float smoothStep01010(float a, float t, float b) {
+    float mappedT = sin(t*TAU32);
+    if(mappedT < 0) {
+        mappedT *= -1;
+    }
+
+    float value = lerp(a, mappedT, b);
+
     return value;
 }
 
@@ -834,6 +855,17 @@ V4 smoothStep00V4(V4 a, float t, V4 b) {
     
     return value;
 }
+V4 smoothStep01010V4(V4 a, float t, V4 b) {
+    V4 value = {};
+    
+    value.x = smoothStep01010(a.x, t, b.x);
+    value.y = smoothStep01010(a.y, t, b.y);
+    value.z = smoothStep01010(a.z, t, b.z);
+    value.w = smoothStep01010(a.w, t, b.w);
+    
+    return value;
+}
+
 
 bool inCircle(V2 point, Rect2f bounds) {
     bool result = false;

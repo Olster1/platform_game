@@ -19,11 +19,13 @@ struct particle
     V4 dColor;
     V4 Color;
     float lifeAt;
-    
+
+    Texture *bitmap;
+
+    GLBufferHandles renderHandle;
 };
 
-struct particle_cel
-{
+struct particle_cel {
     float Density;
     V3 dP;
 };
@@ -31,15 +33,18 @@ struct particle_cel
 struct particle_system_settings {
     float LifeSpan;
     float MaxLifeSpan;
-    float Loop;
+    bool Loop;
     
     unsigned int BitmapCount;
     Texture *Bitmaps[32];
+    char *BitmapNames[32];
     unsigned int BitmapIndex;
     Rect2f VelBias;
+    Rect2f posBias;
 
     ParticleSystemType type;
     bool collidesWithFloor;
+
 };
 
 #define CEL_GRID_SIZE 32
@@ -60,9 +65,20 @@ struct particle_system {
 };
 
 
-inline void pushParticleBitmap(particle_system_settings *Settings, Texture *Bitmap) {
+inline void pushParticleBitmap(particle_system_settings *Settings, Texture *Bitmap, char *name) {
     assert(Settings->BitmapCount < arrayCount(Settings->Bitmaps));
-    Settings->Bitmaps[Settings->BitmapCount++] = Bitmap;
+    int indexAt = Settings->BitmapCount++;
+    Settings->Bitmaps[indexAt] = Bitmap;
+    Settings->BitmapNames[indexAt] = name;
+    
+}
+
+inline void removeParticleBitmap(particle_system_settings *Settings, int index) {
+    if(Settings->BitmapCount > 0) {
+        int indexAt = --Settings->BitmapCount;
+        Settings->Bitmaps[index] = Settings->Bitmaps[indexAt];
+        Settings->BitmapNames[index] = Settings->BitmapNames[indexAt];
+    }
     
 }
 
@@ -79,12 +95,16 @@ internal inline void InitParticleSystem(particle_system *System, particle_system
     System->MaxParticleCount = DEFAULT_MAX_PARTICLE_COUNT;
     //System->Active = true;
     //System->Set.Loop = true;
-    System->creationTimer = initTimer(1.0f/120.0f); 
+    //This is saying we create two particles per frame 
+    System->creationTimer = initTimer(1.0f / 120.0f); //default to creating particle every 1 / 120 th of a second. 
 }
 
 inline void Reactivate(particle_system *System) {
     System->Set.LifeSpan = System->Set.MaxLifeSpan;
-    System->particleCount = 0;
+    if(!System->Set.Loop) {
+        System->particleCount = 0;    
+    }
+    
     System->Active = true;
 }
 
@@ -113,20 +133,30 @@ internal inline void drawAndUpdateParticleSystem(particle_system *System, float 
                 ParticleIndex < particlesToCreate;
                 ++ParticleIndex)
             {
+                particle_system_settings *Set = &System->Set;
                 particle *Particle = System->Particles + System->NextParticle++;
                 Particle->Color = v4(1, 1, 1, 1.0f);
                 
                 //NOTE(oliver): Paricles start with motion 
                 
-                Particle->P = v3(randomBetween(-0.01f, 0.01f),
-                                 0,
+                Particle->P = v3(randomBetween(System->Set.posBias.min.x, System->Set.posBias.max.x),
+                                  randomBetween(System->Set.posBias.min.y, System->Set.posBias.max.y),
                                  0);
                 Particle->dP = v3(randomBetween(System->Set.VelBias.min.x, System->Set.VelBias.max.x),
                                   randomBetween(System->Set.VelBias.min.y, System->Set.VelBias.max.y),
                                   0);
                 Particle->ddP = Acceleration;
                 Particle->lifeAt = 0;
-                
+
+                Particle->bitmap = 0;
+                if(Set->BitmapCount > 0) {
+                    Particle->bitmap = Set->Bitmaps[Set->BitmapIndex++];
+                    
+                    if(Set->BitmapIndex >= Set->BitmapCount) {
+                        Set->BitmapIndex = 0;
+                    }
+                }
+
                 if(System->particleCount < System->NextParticle) {
                     System->particleCount = System->NextParticle;
                 }
@@ -170,9 +200,18 @@ internal inline void drawAndUpdateParticleSystem(particle_system *System, float 
             
             int CelX = (int)(P.x + halfGridWidth);
             int CelY = (int)(P.y + halfGridHeight);
+
+            //assert(CelX >= -1);
+            if(CelX < 0) {
+                CelX = 0;
+            }
+            if(CelY < 0) {
+                CelY = 0;
+            }
             
             if(CelX >= CEL_GRID_SIZE){ CelX = CEL_GRID_SIZE - 1;}
             if(CelY >= CEL_GRID_SIZE){ CelY = CEL_GRID_SIZE - 1;}
+            assert(CelX >= 0 && CelX < CEL_GRID_SIZE && CelY >= 0 && CelY < CEL_GRID_SIZE);
             
             particle_cel *Cel = &System->ParticleGrid[CelY][CelX];
             
@@ -193,6 +232,7 @@ internal inline void drawAndUpdateParticleSystem(particle_system *System, float 
                     X < CEL_GRID_SIZE;
                     ++X)
                 {
+                    assert(X >= 0 && X < CEL_GRID_SIZE && Y >= 0 && Y < CEL_GRID_SIZE);
                     particle_cel *Cel = &System->ParticleGrid[Y][X];
                     
                     V3 P = CelGridOrigin + v3(GridScale*(float)X, GridScale*(float)Y, 0);
@@ -222,6 +262,8 @@ internal inline void drawAndUpdateParticleSystem(particle_system *System, float 
             if(CelX < 1){ CelX = 1;}
             if(CelY < 1){ CelY = 1;}
             
+            assert(CelX >= 0 && CelX < CEL_GRID_SIZE && CelY >= 0 && CelY < CEL_GRID_SIZE);
+
             particle_cel *CelCenter = &System->ParticleGrid[CelY][CelX];
             particle_cel *CelLeft = &System->ParticleGrid[CelY][CelX - 1];
             particle_cel *CelRight = &System->ParticleGrid[CelY][CelX + 1];
@@ -260,22 +302,23 @@ internal inline void drawAndUpdateParticleSystem(particle_system *System, float 
             V4 Color = Particle->Color;
             
             float t = Particle->lifeAt/particleLifeSpan;
-            assert(t >= 0 && t <= 1);
+            //assert(t >= 0 && t <= 1);
             float alphaValue = clamp(0, smoothStep00(0, t, 1), 1);
 
             Color.w = alphaValue;
             
             particle_system_settings *Set = &System->Set;
             
-            Texture *Bitmap = Set->Bitmaps[Set->BitmapIndex++];
+            Texture *Bitmap = Particle->bitmap;
             
-            if(Set->BitmapIndex >= Set->BitmapCount) {
-                Set->BitmapIndex = 0;
-            }
             
             Particle->lifeAt += dt;
             RenderInfo renderInfo = calculateRenderInfo(v3_plus(Particle->P, Origin), v3(0.8f, 0.8f, 0), camPos, metresToPixels);
-            openGlTextureCentreDim(Bitmap->id, renderInfo.pos, renderInfo.dim.xy, Color, 0, mat4(), 1, projectionMatrixToScreen(bufferWidth, bufferHeight));
+            if(Bitmap) {
+                openGlTextureCentreDim(&Particle->renderHandle, Bitmap->id, renderInfo.pos, renderInfo.dim.xy, Color, 0, mat4(), 1, renderInfo.pvm, projectionMatrixToScreen(bufferWidth, bufferHeight));    
+            } else {
+                openGlDrawRing(&Particle->renderHandle, renderInfo.pos, renderInfo.dim.xy, Color, mat4(), 1, renderInfo.pvm, projectionMatrixToScreen(bufferWidth, bufferHeight));                
+            }
         }
         System->Set.LifeSpan -= dt;
         if(System->Set.LifeSpan <= 0.0f) {

@@ -1,0 +1,21 @@
+NPC: {
+	eventID: 0;
+
+}
+Commons: {
+	id: 5;
+	name: "(null)";
+	flags: 177;
+	type: "ENT_TYPE_DEFAULT";
+	position: -10.775775 2.189891 -1.000000;
+	velocity: 0.000000 0.404040 0.000000;
+	renderPosOffset: 0.000000 0.000000 0.000000;
+	dim: 1.000000 1.000000 1.000000;
+	renderScale: 1.000000 1.000000 1.000000;
+	shading: 1.000000 1.000000 1.000000 1.000000;
+	texture: "sign.png";
+	inverseWeight: 1.000000;
+	angle: 0.000000;
+	//animation: "chubby man animation";
+
+}

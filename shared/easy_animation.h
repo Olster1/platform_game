@@ -124,6 +124,7 @@ inline static bool IsEmpty(animation_list_item *Sentinel) {
 }
 
 inline static Texture *GetBitmap(animation_list_item *Item) {
+    assert(Item->Animation);
     assert(Item->FrameIndex < Item->Animation->FrameCount);
     Texture *Result = &Item->Animation->Frames[Item->FrameIndex];
     return Result;

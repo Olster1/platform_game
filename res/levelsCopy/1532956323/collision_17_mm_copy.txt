@@ -1,0 +1,19 @@
+Collision: {
+
+}
+Commons: {
+	id: 17;
+	name: "(null)";
+	flags: 189;
+	type: "ENT_TYPE_WORLD_COLLISION";
+	position: -6.492304 6.573837 -1.000000;
+	velocity: 0.000000 0.000000 0.000000;
+	renderPosOffset: 0.000000 0.000000 0.000000;
+	dim: 4.000000 1.000000 1.000000;
+	renderScale: 1.000000 1.000000 1.000000;
+	shading: 1.000000 1.000000 1.000000 1.000000;
+	texture: "scrollTexture2.jpg";
+	inverseWeight: 0.000000;
+	angle: 0.000000;
+
+}

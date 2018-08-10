@@ -80,9 +80,9 @@ Arena createArena(size_t size) {
 void *pushSize(Arena *arena, size_t size) {
     if(arena->currentSize + size > arena->totalSize){
         //TODO: handle temp memory. 
-        size_t extension = Kilobytes(1028);
-        arena->totalSize += extension;
-        arena->memory = calloc(extension, 1);
+        // size_t extension = Kilobytes(1028);
+        // arena->totalSize += extension;
+        // arena->memory = calloc(extension, 1);
     }
     assertStr(arena->currentSize + size <= arena->totalSize, "ERROR: ran out of memory");
     
@@ -180,6 +180,8 @@ typedef enum {
     BUTTON_LEFT_MOUSE,
     BUTTON_RIGHT_MOUSE,
     BUTTON_1,
+    BUTTON_F1,
+    BUTTON_TILDE,
     //
     BUTTON_COUNT
 } ButtonType;
@@ -196,6 +198,7 @@ typedef struct {
     unsigned int length;
     int cursorAt;
 } InputBuffer;
+
 
 
 #define wasPressed(buttonArray, index) (buttonArray[index].isDown && buttonArray[index].transitionCount != 0)  

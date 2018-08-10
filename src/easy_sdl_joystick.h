@@ -34,7 +34,7 @@ void easyJoyStickCloseControllers() {
     }
 }
 
-void easyJoyStickPoll() {
+int easyJoyStickPoll() { //returns controllers available
     globalAvailableControllers = 0;
     for (int ControllerIndex = 0;
          ControllerIndex < MAX_CONTROLLERS;
@@ -91,4 +91,5 @@ void easyJoyStickPoll() {
             // TODO: This controller is note plugged in.
         }
     }
+    return globalAvailableControllers;
 }

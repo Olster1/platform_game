@@ -1,0 +1,18 @@
+Camera: {
+
+}
+Commons: {
+	id: 2;
+	name: "camera";
+	flags: 433;
+	type: "ENT_TYPE_NULL";
+	position: -10.341083 2.603729 1.146000;
+	velocity: -0.000000 -0.000000 0.000000;
+	renderPosOffset: 0.000000 0.300000 0.000000;
+	dim: 1.000000 1.000000 1.000000;
+	renderScale: 1.000000 1.000000 1.000000;
+	shading: 1.000000 1.000000 1.000000 1.000000;
+	inverseWeight: 0.000000;
+	angle: 0.000000;
+
+}

@@ -5,6 +5,8 @@ File to enable writing with fonts easy to add to your project. Uses Sean Barret'
 #define STB_TRUETYPE_IMPLEMENTATION 
 #include "stb_truetype.h"
 
+static bool globalFontImmediate = false; //This is if we want to output text without going through a render buffer
+
 typedef struct {
     int index;
     V4 color;
@@ -91,6 +93,8 @@ typedef struct {
     int quadVertexAt; //stored to keep track of quad
     int indexAt;
 
+    float size;
+
     float bufferHeight;
 
 } FontDrawState;
@@ -123,13 +127,14 @@ void pushFontGlyphQuad(FontDrawState *drawState, float u, float t, float x, floa
     }
 }
 
-FontDrawState beginFontGlyphs(GLuint texHandle, V4 color, float bufferHeight) {
+FontDrawState beginFontGlyphs(GLuint texHandle, V4 color, float bufferHeight, float size) {
     FontDrawState result = {};
     result.texHandle = texHandle;
     result.vertexData = initInfinteAlloc(Vertex);
     result.indicesData = initInfinteAlloc(unsigned int);
     result.bufferHeight = bufferHeight; 
     result.color = color;
+    result.size = size;
     return result;
 }
 
@@ -138,7 +143,14 @@ void endFontGlyphs(FontDrawState *drawState, int bufferWidth, int bufferHeight) 
     assert(!"Not implemented");
     #else 
     unsigned int *at = (unsigned int *)drawState->indicesData.memory;
-    loadVertices((Vertex *)drawState->vertexData.memory, drawState->vertexData.count, (unsigned int *)drawState->indicesData.memory, drawState->indicesData.count, textureProgram.glProgram, SHAPE_TEXTURE, drawState->texHandle, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1), 1);
+    Matrix4 orthoMatrix = OrthoMatrixToScreen(bufferWidth, bufferHeight, 1);
+    //orthoMatrix = Matrix4_scale(orthoMatrix, v3(drawState->size, drawState->size, 1));
+    if(globalFontImmediate) {
+        loadVertices(0, (Vertex *)drawState->vertexData.memory, drawState->vertexData.count, (unsigned int *)drawState->indicesData.memory, drawState->indicesData.count, textureProgram.glProgram, SHAPE_TEXTURE, drawState->texHandle, orthoMatrix, 1, drawState->color);    
+    } else {
+        pushRenderItem(0, &globalRenderGroup, (Vertex *)drawState->vertexData.memory, drawState->vertexData.count, (unsigned int *)drawState->indicesData.memory, drawState->indicesData.count, textureProgram.glProgram, SHAPE_TEXTURE, drawState->texHandle, orthoMatrix, 1, drawState->color);    
+    }
+    
     releaseInfiniteAlloc(&drawState->vertexData);
     releaseInfiniteAlloc(&drawState->indicesData);
     #endif
@@ -187,10 +199,12 @@ Rect2f my_stbtt_print_(Font *font, float x, float y, float bufferWidth, float bu
 
     glBegin(GL_QUADS);
 #else 
-    FontDrawState drawState = beginFontGlyphs(font->handle, color, bufferHeight);
+    FontDrawState drawState = beginFontGlyphs(font->handle, color, bufferHeight, size);
 #endif
     V2 lastXY = v2(x, y);
-    
+    V2 startP = lastXY;
+#define transformToSizeX(val) ((val - startP.x)*size + startP.x)
+#define transformToSizeY(val) ((val - startP.y)*size + startP.y)
     bool inWord = false;
     bool hasBeenToNewLine = false;
     char *tempAt = text;
@@ -208,7 +222,7 @@ Rect2f my_stbtt_print_(Font *font, float x, float y, float bufferWidth, float bu
             glyph->lastXY = lastXY;;
         }
         
-        bool overflowed = (x > margin.maxX && inWord);
+        bool overflowed = (transformToSizeX(x) > margin.maxX && inWord);
         
         if(*text == ' ' || *text == '\n') {
             inWord = false;
@@ -227,7 +241,7 @@ Rect2f my_stbtt_print_(Font *font, float x, float y, float bufferWidth, float bu
         
         if(overflowed || *text == '\n') {
             x = margin.minX;
-            y += font->fontHeight; 
+            y += size*font->fontHeight; 
         }
         
         bool lastCharacter = (*(text + 1) == '\0');
@@ -236,6 +250,10 @@ Rect2f my_stbtt_print_(Font *font, float x, float y, float bufferWidth, float bu
             for(int i = 0; i < quadCount; ++i) {
                 GlyphInfo *glyph = qs + i;
                 stbtt_aligned_quad q = glyph->q;
+                q.x0 = ((q.x0 - startP.x)*size) + startP.x;
+                q.y0 = ((q.y0 - startP.y)*size) + startP.y;
+                q.y1 = ((q.y1 - startP.y)*size) + startP.y;
+                q.x1 = ((q.x1 - startP.x)*size) + startP.x;
                 Rect2f b = rect2f(q.x0, q.y0, q.x1, q.y1);
                 bounds = unionRect2f(bounds, b);
                 points[pC++] = b;
@@ -256,8 +274,8 @@ Rect2f my_stbtt_print_(Font *font, float x, float y, float bufferWidth, float bu
                 }
                 if(cursorInfo && (glyph->index == cursorInfo->index)) {
                     width = q.x1 - q.x0;
-                    height = 32;//q.y1 - q.y0;
-                    pos = v2(glyph->lastXY.x + 0.5f*width, glyph->lastXY.y - 0.5f*height);
+                    height = 32*size;//q.y1 - q.y0;
+                    pos = v2(transformToSizeX(glyph->lastXY.x) + 0.5f*width, transformToSizeY(glyph->lastXY.y) - 0.5f*height);
                 }
                 
             }
@@ -282,14 +300,14 @@ Rect2f my_stbtt_print_(Font *font, float x, float y, float bufferWidth, float bu
 #endif
     
     if(cursorInfo && (int)(text - text_) <= cursorInfo->index) {
-        width = 16;
-        height = 32;
+        width = size*16;
+        height = size*32;
         
-        pos = v2(x + 0.5f*width, y - 0.5f*height);
+        pos = v2(transformToSizeX(x) + 0.5f*width, transformToSizeY(y) - 0.5f*height);
     }
     
     if(cursorInfo) {
-        openGlDrawRectCenterDim(v2ToV3(pos, -1), v2(width, height), cursorInfo->color, 0, mat4TopLeftToBottomLeft(bufferHeight), 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1));
+        openGlDrawRectCenterDim(0, v2ToV3(pos, -1), v2(width, height), cursorInfo->color, 0, mat4TopLeftToBottomLeft(bufferHeight), 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1));
     }
 #if 0 //draw idvidual text boxes
     for(int i = 0; i < pC; ++i) {
@@ -334,22 +352,23 @@ Rect2f outputTextWithLength(Font *font, float x, float y, float bufferWidth, flo
     for(int i = 0; i < textLength; ++i) {
         text[i] = allText[i];
     }
+
     text[textLength] = '\0'; //null terminate. 
     Rect2f result = my_stbtt_print_(font, x, y, bufferWidth, bufferHeight, text, margin, color, size, 0, display);
     free(text);
     return result;
 }
 
-V2 getBounds(char *string, Rect2f margin, Font *font) {
-    Rect2f bounds  = outputText(font, margin.minX, margin.minY, bufferWidth, bufferHeight, string, margin, v4(0, 0, 0, 1), 1, false);
+V2 getBounds(char *string, Rect2f margin, Font *font, float size) {
+    Rect2f bounds  = outputText(font, margin.minX, margin.minY, bufferWidth, bufferHeight, string, margin, v4(0, 0, 0, 1), size, false);
     
     V2 result = getDim(bounds);
     return result;
 }
 
 
-Rect2f getBoundsRectf(char *string, float xAt, float yAt, Rect2f margin, Font *font) {
-    Rect2f bounds  = outputText(font, xAt, yAt, bufferWidth, bufferHeight, string, margin, v4(0, 0, 0, 1), 1, false);
+Rect2f getBoundsRectf(char *string, float xAt, float yAt, Rect2f margin, Font *font, float size) {
+    Rect2f bounds  = outputText(font, xAt, yAt, bufferWidth, bufferHeight, string, margin, v4(0, 0, 0, 1), size, false);
     
     return bounds;
 }

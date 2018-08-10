@@ -16,6 +16,8 @@ static float FEATHER_PIXELS = 2;
 #include "easy_math.h"
 #endif
 
+#include "easy_render.h"
+
 #define STB_IMAGE_IMPLEMENTATION 1
 #include "stb_image.h"
 
@@ -25,6 +27,16 @@ static float FEATHER_PIXELS = 2;
 #else 
 #include <OpenGl/gl.h>
 #endif
+
+static bool globalImmediateModeGraphics = false;
+
+typedef struct {
+    V3 pos;
+    float flux;
+} LightInfo;
+
+static int globalLightInfoCount;
+static LightInfo globalLightInfos[64];
 
 typedef struct {
     GLuint glProgram;
@@ -39,6 +51,8 @@ GlProgram rectangleNoGradProgram;
 GlProgram textureProgram;
 GlProgram circleProgram;
 GlProgram filterProgram;
+GlProgram lightProgram;
+GlProgram ringProgram;
 
 FileContents loadShader(char *fileName) {
     FileContents fileContents = getFileContentsNullTerminate(fileName);
@@ -60,6 +74,132 @@ typedef struct {
         };
     };
 } Vertex;
+
+typedef enum {
+    SHAPE_RECTANGLE,
+    SHAPE_RECTANGLE_GRAD,
+    SHAPE_TEXTURE,
+    SHAPE_CIRCLE,
+    SHAPE_LINE
+} ShapeType;
+
+typedef enum {
+    BLEND_FUNC_STANDARD,
+    BLEND_FUNC_ZERO_ONE_ZERO_ONE_MINUS_ALPHA,
+} BlendFuncType;
+
+typedef struct {
+    GLuint vaoHandle;
+    int indexCount;
+    bool valid;
+    
+} GLBufferHandles;
+
+typedef struct {
+    InfiniteAlloc triangleData;
+    int triCount; 
+
+    InfiniteAlloc indicesData; 
+    int indexCount; 
+
+    GLuint programId; 
+    ShapeType type; 
+
+    GLuint textureId; 
+
+    Matrix4 PVM; 
+    float zoom;
+
+    int id;
+
+    V4 color;
+
+    int bufferId;
+    bool depthTest;
+    BlendFuncType blendFuncType;
+
+    GLBufferHandles *bufferHandles;
+} RenderItem;
+
+
+typedef struct {
+    int currentBufferId;
+    bool currentDepthTest;
+    GLBufferHandles *currentBufferHandles;
+    BlendFuncType blendFuncType;
+
+    int idAt; 
+    InfiniteAlloc items; //type: RenderItem
+} RenderGroup;
+
+RenderGroup initRenderGroup() {
+    RenderGroup result = {};
+    result.items = initInfinteAlloc(RenderItem);
+    result.currentDepthTest = true;
+    result.blendFuncType = BLEND_FUNC_STANDARD;
+    return result;  
+}
+
+void setFrameBufferId(RenderGroup *group, int bufferId) {
+    group->currentBufferId = bufferId;
+
+}
+
+void renderDisableDepthTest(RenderGroup *group) {
+    group->currentDepthTest = false;
+}
+
+void renderEnableDepthTest(RenderGroup *group) {
+    group->currentDepthTest = true;
+}
+
+void setBlendFuncType(RenderGroup *group, BlendFuncType type) {
+    group->blendFuncType = type;
+}
+
+static RenderGroup globalRenderGroup = {};
+
+void pushRenderItem(GLBufferHandles *handles, RenderGroup *group, Vertex *triangleData, int triCount, unsigned int *indicesData, int indexCount, GLuint programId, ShapeType type, GLuint textureId, Matrix4 PVM, float zoom, V4 color) {
+    if(!isInfinteAllocActive(&group->items)) {
+        group->items = initInfinteAlloc(RenderItem);
+    }
+
+    RenderItem *info = (RenderItem *)addElementInifinteAlloc_(&group->items, 0);
+    assert(info);
+    info->bufferId = group->currentBufferId;
+    info->depthTest = group->currentDepthTest;
+    info->blendFuncType = group->blendFuncType;
+    info->bufferHandles = handles;
+    info->color = color;
+
+    info->triangleData = initInfinteAlloc(Vertex);
+    info->triCount = triCount; 
+
+    for(int triIndex = 0; triIndex < triCount; ++triIndex) {
+        addElementInifinteAlloc_(&info->triangleData, &triangleData[triIndex]);
+    }
+
+    info->indicesData = initInfinteAlloc(unsigned int); 
+
+    for(int indicesIndex = 0; indicesIndex < indexCount; ++indicesIndex) {
+        addElementInifinteAlloc_(&info->indicesData, &indicesData[indicesIndex]);
+    }
+
+    info->indexCount = indexCount;
+
+    info->id = group->idAt++;
+
+    info->programId = programId;
+    info->type = type;
+    info->textureId = textureId;
+    info->PVM = PVM;
+    info->zoom = zoom;
+}
+
+typedef struct {
+    InfiniteAlloc vertexData;
+    InfiniteAlloc indicesData;
+} DrawStateCache;
 
 GlProgram createProgram(char *vShaderSource, char *fShaderSource) {
     GlProgram result = {};
@@ -183,7 +323,7 @@ void OpenGlAdjustScreenDim(int width, int height) {
     
     glLoadMatrixf(ProjMat);
 #else 
-    assert(!"not implemented");
+    //OrthoMatrixToScreenViewPort(1);
 #endif
 }
 
@@ -210,7 +350,10 @@ void enableOpenGl(int width, int height) {
     glEnable(GL_DEPTH_TEST);
     //glDepthMask(GL_TRUE);  
     glCheckError();
-    glDepthFunc(GL_LESS);//////GL_LEQUAL);//
+    glDepthFunc(GL_LEQUAL);///GL_LESS);//////GL_LEQUAL);//
+
+    glEnable(GL_STENCIL_TEST);
+    glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
     
     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
     glEnable(GL_SAMPLE_ALPHA_TO_COVERAGE);
@@ -248,6 +391,8 @@ void enableOpenGl(int width, int height) {
     char *fragShaderCirle = concat(append, (char *)"fragment_shader_circle.glsl");
     char *fragShaderRectNoGrad = concat(append, (char *)"fragment_shader_rectangle_noGrad.glsl");
     char *fragShaderFilter = concat(append, (char *)"fragment_shader_texture_filter.glsl");
+    char *fragShaderLight = concat(append, (char *)"fragment_shader_point_light.glsl");
+    char *fragShaderRing = concat(append, (char *)"frag_shader_ring.c");
     
     rectangleNoGradProgram  = createProgramFromFile(vertShaderRect, fragShaderRectNoGrad);
     glCheckError();
@@ -266,10 +411,17 @@ void enableOpenGl(int width, int height) {
     
     circleProgram = createProgramFromFile(vertShaderRect, fragShaderCirle);
     glCheckError();
+
+    lightProgram = createProgramFromFile(vertShaderRect, fragShaderLight);
+    glCheckError();
+
+    ringProgram = createProgramFromFile(vertShaderRect, fragShaderRing);
+    glCheckError();
     
 #endif
     
 }
+
 
 static inline V4 hexARGBTo01Color(unsigned int color) {
     V4 result = {};
@@ -312,7 +464,12 @@ void deleteFrameBuffer(FrameBuffer *frameBuffer) {
     
 }
 
-FrameBuffer createFrameBuffer(int width, int height, bool withDepth) {
+typedef enum {
+    FRAMEBUFFER_DEPTH = 1 << 0,
+    FRAMEBUFFER_STENCIL = 1 << 1,
+} FrameBufferFlag;
+
+FrameBuffer createFrameBuffer(int width, int height, int flags) {
     
     GLuint mainTexture = openGlLoadTexture(width, height, 0);
     glCheckError();
@@ -324,21 +481,28 @@ FrameBuffer createFrameBuffer(int width, int height, bool withDepth) {
     glCheckError();
     
     GLuint depthId = -1;
-    
-    if(withDepth) {
+
+    if(flags) {
         glGenTextures(1, &depthId);
         glCheckError();
         
         glBindTexture(GL_TEXTURE_2D, depthId);
         glCheckError();
-        
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, width, height, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_BYTE, 0);
-        glCheckError();
-        
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, 
-                               depthId, 0);
-        glCheckError();
-        
+            
+        if(!(flags & FRAMEBUFFER_STENCIL)) { //Just depth buffer
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, width, height, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_BYTE, 0);
+            glCheckError();
+            
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthId, 0);
+            glCheckError();    
+        } else {
+            //CREATE STENCIL BUFFER ALONG WITH DEPTH BUFFER
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH24_STENCIL8, width, height, 0, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, 0);
+            glCheckError();
+            
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, depthId, 0);
+            glCheckError();    
+        } 
     }
     
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, 
@@ -356,7 +520,7 @@ FrameBuffer createFrameBuffer(int width, int height, bool withDepth) {
 }
 
 
-FrameBuffer createFrameBufferMultiSample(int width, int height, bool withDepth, int sampleCount) {
+FrameBuffer createFrameBufferMultiSample(int width, int height, int flags, int sampleCount) {
     #if FIXED_FUNCTION_PIPELINE    
     FrameBuffer result = createFrameBuffer(width, height, withDepth);
     #else
@@ -376,7 +540,7 @@ FrameBuffer createFrameBufferMultiSample(int width, int height, bool withDepth, 
     glBindFramebuffer(GL_FRAMEBUFFER, frameBufferHandle);
     glCheckError();
     
-    if(withDepth) {
+    if(flags) {
         GLuint resultId;
         glGenTextures(1, &resultId);
         glCheckError();
@@ -384,11 +548,10 @@ FrameBuffer createFrameBufferMultiSample(int width, int height, bool withDepth, 
         glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, resultId);
         glCheckError();
         
-        glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, sampleCount, GL_DEPTH_COMPONENT, width, height, GL_FALSE);
+        glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, sampleCount, GL_DEPTH24_STENCIL8, width, height, GL_FALSE);
         glCheckError();
         
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D_MULTISAMPLE, 
-                               resultId, 0);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D_MULTISAMPLE, resultId, 0);
         glCheckError();
         
     }
@@ -406,21 +569,6 @@ FrameBuffer createFrameBufferMultiSample(int width, int height, bool withDepth, 
     return result;
 }
 
-
-typedef struct {
-    GLuint verticesIndex;
-    GLuint indicesIndex;
-    bool valid;
-    
-} GLBufferHandles;
-
-typedef enum {
-    SHAPE_RECTANGLE,
-    SHAPE_RECTANGLE_GRAD,
-    SHAPE_TEXTURE,
-    SHAPE_CIRCLE,
-    SHAPE_LINE
-} ShapeType;
 
 typedef struct {
     //We 'cook' the vertex data and keep it round. Then send down all the vertex data in one big draw call. 
@@ -456,55 +604,107 @@ void addVertices(Arena *memoryArena, Vertices *vertices, CookedData *data) {
 void clearBufferAndBind(GLuint bufferHandle, V4 color) {
     glBindFramebuffer(GL_FRAMEBUFFER, bufferHandle); 
     
+    setFrameBufferId(&globalRenderGroup, bufferHandle);
+
     glClearColor(color.x, color.y, color.z, color.w);
+    glStencilFunc(GL_ALWAYS, 1, 0xFF);
+    glStencilMask(0xFF);
     glClearDepth(1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); //TODO: do we need a Depth buffer?
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT); 
     GLenum err = glGetError();
 }
 
 #if !FIXED_FUNCTION_PIPELINE
 //This call can be used for batch draw calls. It assumes the vertices are already in world space, so there is no need for a per shape rotation matrix.  
-void loadVertices(Vertex *triangleData, int triCount, unsigned int *indicesData, int indexCount, GLuint programId, ShapeType type, GLuint textureId, Matrix4 PVM, float zoom) {
-    
-    //printf("%d %d\n", triCount, indexCount);
+
+
+//initialization
+// glGenVertexArrays
+// glBindVertexArray
+
+// glGenBuffers
+// glBindBuffer
+// glBufferData
+
+// glVertexAttribPointer
+// glEnableVertexAttribArray
+
+// glBindVertexArray(0)
+
+// glDeleteBuffers //you can already delete it after the VAO is unbound, since the
+//                 //VAO still references it, keeping it alive (see comments below).
+
+// ...
+
+// //rendering
+// glBindVertexArray
+// glDrawWhatever
+
+
+void loadVertices(GLBufferHandles *bufferHandles, Vertex *triangleData, int triCount, unsigned int *indicesData, int indexCount_, GLuint programId, ShapeType type, GLuint textureId, Matrix4 PVM, float zoom, V4 color) {
     
     glUseProgram(programId);
     glCheckError();
     
-    GLuint vaoHandle;
-    glCheckError();
-    glGenVertexArrays(1, &vaoHandle);
-    glCheckError();
-    glBindVertexArray(vaoHandle);
-    glCheckError();
-    
+    GLuint vaoHandle;  
     GLuint vertices;
     GLuint indices;
-    glGenBuffers(1, &vertices);
-    glCheckError();
-    glBindBuffer(GL_ARRAY_BUFFER, vertices);
-    glCheckError();
-    
-    glBufferData(GL_ARRAY_BUFFER, triCount*sizeof(Vertex), triangleData, GL_STREAM_DRAW);
-    glCheckError();
-    
-    glGenBuffers(1, &indices);
-    glCheckError();
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indices);
-    glCheckError();
-    
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, indexCount*sizeof(unsigned int), indicesData, GL_STREAM_DRAW);
-    glCheckError();
-    
+
+    int indexCount = indexCount_;
+
+    bool initialization = true;
+    if(bufferHandles && bufferHandles->valid) {
+        vaoHandle = bufferHandles->vaoHandle;
+        indexCount = bufferHandles->indexCount;
+        glBindVertexArray(vaoHandle);
+        glCheckError();
+        initialization = false;
+    } else {
+        glGenVertexArrays(1, &vaoHandle);
+        glCheckError();
+        glBindVertexArray(vaoHandle);
+        glCheckError();
+
+        glGenBuffers(1, &vertices);
+        glCheckError();
+        glBindBuffer(GL_ARRAY_BUFFER, vertices);
+        glCheckError();
+        
+        glBufferData(GL_ARRAY_BUFFER, triCount*sizeof(Vertex), triangleData, GL_STATIC_DRAW);
+        glCheckError();
+        
+        glGenBuffers(1, &indices);
+        glCheckError();
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indices);
+        glCheckError();
+        
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, indexCount*sizeof(unsigned int), indicesData, GL_STREAM_DRAW);
+        glCheckError();
+
+        if(bufferHandles) {
+            assert(!bufferHandles->valid);
+            bufferHandles->vaoHandle = vaoHandle;
+            bufferHandles->indexCount = indexCount;
+            bufferHandles->valid = true;
+        }
+    }
+
     GLint PVMUniform = glGetUniformLocation(programId, "PVM");
     glCheckError();
     
     glUniformMatrix4fv(PVMUniform, 1, GL_FALSE, PVM.val);
     glCheckError();
-    
-    //NOTE(Oliver): Here we say use these 
-    glBindBuffer(GL_ARRAY_BUFFER, vertices);
+
+    GLint colorUniform = glGetUniformLocation(programId, "color");
     glCheckError();
+        
+    glUniform4f(colorUniform, color.x, color.y, color.z, color.w);
+    glCheckError();
+    
+    if(initialization) {
+        glBindBuffer(GL_ARRAY_BUFFER, vertices);
+        glCheckError();
+    }
     
     if(type == SHAPE_TEXTURE) {
         GLint texUniform = glGetUniformLocation(programId, "tex");
@@ -517,77 +717,108 @@ void loadVertices(Vertex *triangleData, int triCount, unsigned int *indicesData,
         
         glBindTexture(GL_TEXTURE_2D, textureId); 
         glCheckError();
+
+        //Lighting info stuff
+        // //light count 
+        // GLint lightCountUniform = glGetUniformLocation(programId, "lightCount");
+        // glCheckError();
+        
+        // glUniform1i(lightCountUniform, globalLightInfoCount);
+        // glCheckError();
+
+        // //lights
+        // GLint lightPosUniform = glGetUniformLocation(programId, "lightsPos");
+        // glCheckError();
+        
+        // glUniform1fv(lightPosUniform, globalLightInfoCount*3, globalLightInfos);
+        // glCheckError();
+            
     } else if(type == SHAPE_LINE || type == SHAPE_CIRCLE) {
         GLint percentUniform = glGetUniformLocation(programId, "percentY");
         glCheckError();
         
         if(type == SHAPE_LINE) {
             
-            GLint lenAttrib = glGetAttribLocation(programId, "lengthRatioIn");
-            glCheckError();
-            glEnableVertexAttribArray(lenAttrib);  
-            glCheckError();
-            unsigned int len_offset = 12;
-            glVertexAttribPointer(lenAttrib, 1, GL_FLOAT, GL_FALSE, sizeof(Vertex), ((char *)0) + (len_offset*sizeof(float)));
-            glCheckError();
-            
-            GLint percentAttrib = glGetAttribLocation(programId, "percentY_");
-            glCheckError();
-            glEnableVertexAttribArray(percentAttrib);  
-            glCheckError();
-            unsigned int percentY_offset = 13;
-            glVertexAttribPointer(percentAttrib, 1, GL_FLOAT, GL_FALSE, sizeof(Vertex), ((char *)0) + (percentY_offset*sizeof(float)));
-            glCheckError();
+            if(initialization) {
+                GLint lenAttrib = glGetAttribLocation(programId, "lengthRatioIn");
+                glCheckError();
+                glEnableVertexAttribArray(lenAttrib);  
+                glCheckError();
+                unsigned int len_offset = 12;
+                glVertexAttribPointer(lenAttrib, 1, GL_FLOAT, GL_FALSE, sizeof(Vertex), ((char *)0) + (len_offset*sizeof(float)));
+                glCheckError();
+                
+                GLint percentAttrib = glGetAttribLocation(programId, "percentY_");
+                glCheckError();
+                glEnableVertexAttribArray(percentAttrib);  
+                glCheckError();
+                unsigned int percentY_offset = 13;
+                glVertexAttribPointer(percentAttrib, 1, GL_FLOAT, GL_FALSE, sizeof(Vertex), ((char *)0) + (percentY_offset*sizeof(float)));
+                glCheckError();
+            }
             
         }
     }
     
-    //these can also be retrieved before hand to speed up the process!!!
-    GLint vertexAttrib = glGetAttribLocation(programId, "vertex");
-    glCheckError();
-    GLint texUVAttrib = glGetAttribLocation(programId, "texUV");
-    glCheckError();
+    if(initialization)  {
+        //these can also be retrieved before hand to speed up the process!!!
+        GLint vertexAttrib = glGetAttribLocation(programId, "vertex");
+        glCheckError();
+        GLint texUVAttrib = glGetAttribLocation(programId, "texUV");
+        glCheckError();
+        
+        // GLint colorAttrib = glGetAttribLocation(programId, "color");
+        // glCheckError();
+        
+        glEnableVertexAttribArray(texUVAttrib);  
+        glCheckError();
+        unsigned int texUV_offset = 6;
+        glVertexAttribPointer(texUVAttrib, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), ((char *)0) + (texUV_offset*sizeof(float)));
+        glCheckError();
+        
+        // glEnableVertexAttribArray(colorAttrib);  
+        // glCheckError();
+        // unsigned int color_offset = 8;
+        // glVertexAttribPointer(colorAttrib, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), ((char *)0) + (color_offset*sizeof(float)));
+        // glCheckError();
+        
+        glEnableVertexAttribArray(vertexAttrib);  
+        glCheckError();
+        glVertexAttribPointer(vertexAttrib, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), 0);
+        glCheckError();
+
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indices);
     
-    GLint colorAttrib = glGetAttribLocation(programId, "color");
-    glCheckError();
+    }
     
-    glEnableVertexAttribArray(texUVAttrib);  
-    glCheckError();
-    unsigned int texUV_offset = 6;
-    glVertexAttribPointer(texUVAttrib, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), ((char *)0) + (texUV_offset*sizeof(float)));
-    glCheckError();
-    
-    glEnableVertexAttribArray(colorAttrib);  
-    glCheckError();
-    unsigned int color_offset = 8;
-    glVertexAttribPointer(colorAttrib, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), ((char *)0) + (color_offset*sizeof(float)));
-    glCheckError();
-    
-    glEnableVertexAttribArray(vertexAttrib);  
-    glCheckError();
-    glVertexAttribPointer(vertexAttrib, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), 0);
-    glCheckError();
-    
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indices);
     glDrawElements(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, 0); 
     glCheckError();
     
-    glDeleteVertexArrays(1, &vaoHandle);
-    glDeleteBuffers(1, &vertices);
-    glDeleteBuffers(1, &indices);
+    if(initialization) {
+        glBindVertexArray(0);
+        glDeleteBuffers(1, &vertices);
+        glDeleteBuffers(1, &indices);
+    }
+
+    if(!bufferHandles) {
+        glDeleteBuffers(1, &vertices);
+        glDeleteBuffers(1, &indices);
+        glDeleteVertexArrays(1, &vaoHandle);
+    }
+
     glUseProgram(0);
     
 }
 #endif
 
-void openGlDrawRectOutlineCenterDim(V2 center, V2 dim, V4 color, float rot, Matrix4 offsetTransform, float zoom, Matrix4 projectionMatrix) {
+void openGlDrawRectOutlineCenterDim(GLBufferHandles *handles, V3 center, V2 dim, V4 color, float rot, Matrix4 offsetTransform, float zoom, Matrix4 projectionMatrix) {
 #if FIXED_FUNCTION_PIPELINE
     glDisable(GL_TEXTURE_2D);
     glMatrixMode(GL_MODELVIEW);
     glColor4f(color.x, color.y, color.z, color.w);
     
 #endif
-    V2 deltaP = V4MultMat4(v2ToV4Homogenous(center), offsetTransform).xy; 
+    V3 deltaP = V4MultMat4(v3ToV4Homogenous(center), offsetTransform).xyz; 
     
     float a1 = cos(rot);
     float a2 = sin(rot);
@@ -598,7 +829,7 @@ void openGlDrawRectOutlineCenterDim(V2 center, V2 dim, V4 color, float rot, Matr
             a1,  a2,  0,  0,
             b1,  b2,  0,  0,
             0,  0,  1,  0,
-            deltaP.x, deltaP.y, 0,  1
+            deltaP.x, deltaP.y, deltaP.z,  1
         }};
     
     
@@ -625,7 +856,7 @@ void openGlDrawRectOutlineCenterDim(V2 center, V2 dim, V4 color, float rot, Matr
         v2(0, -halfDim.y),
     };
     
-    float thickness = 4;
+    float thickness = 1;
     
     for(int i = 0; i < 4; ++i) {
         float rotat = rotations[i];
@@ -663,29 +894,33 @@ void openGlDrawRectOutlineCenterDim(V2 center, V2 dim, V4 color, float rot, Matr
         Vertex triangleData[4] = {};
         triangleData[0].color = color;
         triangleData[0].texUV = v2(0, 0);
-        triangleData[0].position = v3(0, -halfLen, 1);
+        triangleData[0].position = v3(0, -halfLen, 0);
         
         triangleData[1].color = color;
         triangleData[1].texUV = v2(0, 1);
-        triangleData[1].position = v3(0, halfLen, 1);
+        triangleData[1].position = v3(0, halfLen, 0);
         
         triangleData[2].color = color;
         triangleData[2].texUV = v2(1, 0);
-        triangleData[2].position = v3(thickness, -halfLen, 1);
+        triangleData[2].position = v3(thickness, -halfLen, 0);
         
         triangleData[3].color = color;
         triangleData[3].texUV = v2(1, 1);
-        triangleData[3].position = v3(thickness, halfLen, 1);
+        triangleData[3].position = v3(thickness, halfLen, 0);
         
         unsigned int indicesData[6] = {0, 1, 3, 0, 2, 3};
         
         for(int j = 0; j < 4; j++) {
-            Matrix4 rot = Mat4Mult(rotationMat1, rotationMat);
-            triangleData[j].position = transformPositionV3(triangleData[j].position, rot);
+            // Matrix4 rot = Mat4Mult(rotationMat1, rotationMat);
+            // triangleData[j].position = transformPositionV3(triangleData[j].position, rot);
         }
         
         //the vertices 
-        loadVertices(triangleData, arrayCount(triangleData), indicesData, arrayCount(indicesData), rectangleProgram.glProgram, SHAPE_RECTANGLE, 0, projectionMatrix, zoom);
+        if(globalImmediateModeGraphics) {
+            loadVertices(handles, triangleData, arrayCount(triangleData), indicesData, arrayCount(indicesData), rectangleProgram.glProgram, SHAPE_RECTANGLE, 0, projectionMatrix, zoom, color);
+        } else {
+            pushRenderItem(handles, &globalRenderGroup, triangleData, arrayCount(triangleData), indicesData, arrayCount(indicesData), rectangleProgram.glProgram, SHAPE_RECTANGLE, 0, Mat4Mult(projectionMatrix, Mat4Mult(rotationMat, rotationMat1)), zoom, color);
+        }
         
 #endif
     }
@@ -696,8 +931,8 @@ void openGlDrawRectOutlineCenterDim(V2 center, V2 dim, V4 color, float rot, Matr
     
 }
 
-void openGlDrawRectOutlineRect2f(Rect2f rect, V4 color, float rot, Matrix4 offsetTransform, float zoom, Matrix4 projectionMatrix) {
-    openGlDrawRectOutlineCenterDim(getCenter(rect), getDim(rect), color, rot, offsetTransform, zoom, projectionMatrix);
+void openGlDrawRectOutlineRect2f(GLBufferHandles *handles, Rect2f rect, V4 color, float rot, Matrix4 offsetTransform, float zoom, Matrix4 projectionMatrix) {
+    openGlDrawRectOutlineCenterDim(handles, v2ToV3(getCenter(rect), -1), getDim(rect), color, rot, offsetTransform, zoom, projectionMatrix);
 }
 
 static inline void gl_SetColor(V4 color) {
@@ -707,13 +942,15 @@ static inline void gl_SetColor(V4 color) {
 }
 
 //
-void openGlDrawRectCenterDim_(V3 center, V2 dim, V4 *colors, float rot, Matrix4 offsetTransform, GLint textureId, ShapeType type, GLuint programId, float zoom, Matrix4 projectionMatrix) {
+void openGlDrawRectCenterDim_(GLBufferHandles *handles, V3 center, V2 dim, V4 *colors, float rot, Matrix4 offsetTransform, GLint textureId, ShapeType type, GLuint programId, float zoom, Matrix4 viewMatrix, Matrix4 projectionMatrix) {
     
 #if FIXED_FUNCTION_PIPELINE
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
 #endif
-    
+    Vertex triangleData[4] = {};
+    unsigned int indicesData[6] = {0, 1, 3, 0, 2, 3};
+
     float a1 = cos(rot);
     float a2 = sin(rot);
     float b1 = cos(rot + HALF_PI32);
@@ -723,79 +960,91 @@ void openGlDrawRectCenterDim_(V3 center, V2 dim, V4 *colors, float rot, Matrix4 
     
     V3 deltaP = V4MultMat4(centerV4, offsetTransform).xyz; 
     Matrix4 rotationMat = {{
-            a1,  a2,  0,  0,
-            b1,  b2,  0,  0,
+            dim.x*a1,  dim.x*a2,  0,  0,
+            dim.y*b1,  dim.y*b2,  0,  0,
             0,  0,  1,  0,
             deltaP.x, deltaP.y, deltaP.z,  1
         }};
-    
-    V2 halfDim = v2(0.5f*dim.x, 0.5f*dim.y);
-    
-#if FIXED_FUNCTION_PIPELINE
-    glMultMatrixf(rotationMat.val);
-    
-    //colors specified clockwise. 
-    glBegin(GL_TRIANGLES);
-    gl_SetColor(colors[0]);
-    glTexCoord2f(0, 0);
-    glVertex2f(-halfDim.x, -halfDim.y);
-    
-    gl_SetColor(colors[1]);
-    glTexCoord2f(0, 1);
-    glVertex2f(-halfDim.x, halfDim.y);
-    
-    gl_SetColor(colors[2]);
-    glTexCoord2f(1, 1);
-    glVertex2f(halfDim.x, halfDim.y);
-    
-    gl_SetColor(colors[0]);
-    glTexCoord2f(0, 0);
-    glVertex2f(-halfDim.x, -halfDim.y);
-    
-    gl_SetColor(colors[3]);
-    glTexCoord2f(1, 0);
-    glVertex2f(halfDim.x, -halfDim.y);
-    
-    gl_SetColor(colors[2]);
-    glTexCoord2f(1, 1);
-    glVertex2f(halfDim.x, halfDim.y);
-    glEnd();
-#else 
-    GLenum err;
-    Vertex triangleData[4] = {};
-    triangleData[0].color = colors[0];
-    triangleData[0].texUV = v2(0, 0);
-    triangleData[0].position = v3(-halfDim.x, -halfDim.y, 0);
-    
-    triangleData[1].color = colors[1];
-    triangleData[1].texUV = v2(0, 1);
-    triangleData[1].position = v3(-halfDim.x, halfDim.y, 0);
-    
-    triangleData[2].color = colors[2];
-    triangleData[2].texUV = v2(1, 0);
-    triangleData[2].position = v3(halfDim.x, -halfDim.y, 0);
-    
-    triangleData[3].color = colors[3];
-    triangleData[3].texUV = v2(1, 1);
-    triangleData[3].position = v3(halfDim.x, halfDim.y, 0);
-    
-    unsigned int indicesData[6] = {0, 1, 3, 0, 2, 3};
-    
-    for(int i = 0; i < 4; i++) {
-        triangleData[i].position = transformPositionV3(triangleData[i].position, rotationMat);
+
+    if(!handles || !handles->valid) {   
+        V2 halfDim = v2(0.5f, 0.5f); //Dim is 1 and we pass the actual dim in the PVM matrix
+        
+    #if FIXED_FUNCTION_PIPELINE
+        glMultMatrixf(rotationMat.val);
+        
+        //colors specified clockwise. 
+        glBegin(GL_TRIANGLES);
+        gl_SetColor(colors[0]);
+        glTexCoord2f(0, 0);
+        glVertex2f(-halfDim.x, -halfDim.y);
+        
+        gl_SetColor(colors[1]);
+        glTexCoord2f(0, 1);
+        glVertex2f(-halfDim.x, halfDim.y);
+        
+        gl_SetColor(colors[2]);
+        glTexCoord2f(1, 1);
+        glVertex2f(halfDim.x, halfDim.y);
+        
+        gl_SetColor(colors[0]);
+        glTexCoord2f(0, 0);
+        glVertex2f(-halfDim.x, -halfDim.y);
+        
+        gl_SetColor(colors[3]);
+        glTexCoord2f(1, 0);
+        glVertex2f(halfDim.x, -halfDim.y);
+        
+        gl_SetColor(colors[2]);
+        glTexCoord2f(1, 1);
+        glVertex2f(halfDim.x, halfDim.y);
+        glEnd();
+    #else 
+        GLenum err;
+        
+        triangleData[0].color = colors[0];
+        triangleData[0].texUV = v2(0, 0);
+        triangleData[0].position = v3(-halfDim.x, -halfDim.y, 0);
+        
+        triangleData[1].color = colors[1];
+        triangleData[1].texUV = v2(0, 1);
+        triangleData[1].position = v3(-halfDim.x, halfDim.y, 0);
+        
+        triangleData[2].color = colors[2];
+        triangleData[2].texUV = v2(1, 0);
+        triangleData[2].position = v3(halfDim.x, -halfDim.y, 0);
+        
+        triangleData[3].color = colors[3];
+        triangleData[3].texUV = v2(1, 1);
+        triangleData[3].position = v3(halfDim.x, halfDim.y, 0);
+        
+
+
+        // for(int i = 0; i < 4; i++) {
+        //     triangleData[i].position = transformPositionV3(triangleData[i].position, rotationMat);
+        // }
     }
+    if(globalImmediateModeGraphics) {
+        //loadVertices(0, triangleData, arrayCount(triangleData), indicesData, arrayCount(indicesData), programId, type, textureId, Mat4Mult(projectionMatrix, Mat4Mult(viewMatrix, rotationMat)), zoom);
+    } else {
+        int triCount = arrayCount(triangleData);
+        int indicesCount = arrayCount(indicesData);
+        if(handles &&handles->valid) {
+            triCount = 0;
+            indicesCount = 0;
+        }
+        pushRenderItem(handles, &globalRenderGroup, triangleData, triCount, indicesData, indicesCount, programId, type, textureId, Mat4Mult(projectionMatrix, Mat4Mult(viewMatrix, rotationMat)), zoom, colors[0]);
+    }    
     
-    loadVertices(triangleData, arrayCount(triangleData), indicesData, arrayCount(indicesData), programId, type, textureId, projectionMatrix, zoom);
     
 #endif
 }
 
-void openGlDrawRectCenterDim(V3 center, V2 dim, V4 color, float rot, Matrix4 offsetTransform, float zoom, Matrix4 projectionMatrix) {
+void openGlDrawRectCenterDim(GLBufferHandles *handles, V3 center, V2 dim, V4 color, float rot, Matrix4 offsetTransform, float zoom, Matrix4 projectionMatrix) {
 #if FIXED_FUNCTION_PIPELINE
     glDisable(GL_TEXTURE_2D);
 #endif
     V4 colors[4] = {color, color, color, color}; 
-    openGlDrawRectCenterDim_(center, dim, colors, rot, offsetTransform, 0, SHAPE_RECTANGLE, rectangleProgram.glProgram, zoom, projectionMatrix);
+    openGlDrawRectCenterDim_(handles, center, dim, colors, rot, offsetTransform, 0, SHAPE_RECTANGLE, rectangleProgram.glProgram, zoom, mat4(), projectionMatrix);
 #if FIXED_FUNCTION_PIPELINE
     glLoadIdentity();
     glEnable(GL_TEXTURE_2D);
@@ -803,12 +1052,12 @@ void openGlDrawRectCenterDim(V3 center, V2 dim, V4 color, float rot, Matrix4 off
     
 }
 
-void openGlDrawRectCenterDim_NoGrad(V3 center, V2 dim, V4 color, float rot, Matrix4 offsetTransform, float zoom, Matrix4 projectionMatrix) {
+void openGlDrawRectCenterDim_NoGrad(GLBufferHandles *handles, V3 center, V2 dim, V4 color, float rot, Matrix4 offsetTransform, float zoom, Matrix4 projectionMatrix) {
 #if FIXED_FUNCTION_PIPELINE
     glDisable(GL_TEXTURE_2D);
 #endif
     V4 colors[4] = {color, color, color, color}; 
-    openGlDrawRectCenterDim_(center, dim, colors, rot, offsetTransform, 0, SHAPE_RECTANGLE, rectangleNoGradProgram.glProgram, zoom, projectionMatrix);
+    openGlDrawRectCenterDim_(handles, center, dim, colors, rot, offsetTransform, 0, SHAPE_RECTANGLE, rectangleNoGradProgram.glProgram, zoom, mat4(), projectionMatrix);
 #if FIXED_FUNCTION_PIPELINE
     glLoadIdentity();
     glEnable(GL_TEXTURE_2D);
@@ -816,13 +1065,13 @@ void openGlDrawRectCenterDim_NoGrad(V3 center, V2 dim, V4 color, float rot, Matr
     
 }
 
-void openGlDrawRect(Rect2f rect, float zValue, V4 color, float rot, Matrix4 offsetTransform, float zoom, Matrix4 projectionMatrix) {
+void openGlDrawRect(GLBufferHandles *handles, Rect2f rect, float zValue, V4 color, float rot, Matrix4 offsetTransform, float zoom, Matrix4 projectionMatrix) {
 #if FIXED_FUNCTION_PIPELINE
     glDisable(GL_TEXTURE_2D);
 #endif
     V4 colors[4] = {color, color, color, color}; 
-    openGlDrawRectCenterDim_(v2ToV3(getCenter(rect), zValue), getDim(rect), colors, rot, 
-                             offsetTransform, 0, SHAPE_RECTANGLE, rectangleProgram.glProgram, zoom, projectionMatrix);
+    openGlDrawRectCenterDim_(handles, v2ToV3(getCenter(rect), zValue), getDim(rect), colors, rot, 
+                             offsetTransform, 0, SHAPE_RECTANGLE, rectangleProgram.glProgram, zoom, mat4(), projectionMatrix);
 #if FIXED_FUNCTION_PIPELINE
     glLoadIdentity();
     glEnable(GL_TEXTURE_2D);
@@ -831,11 +1080,11 @@ void openGlDrawRect(Rect2f rect, float zValue, V4 color, float rot, Matrix4 offs
 }
 
 //must be an array of four. Specified clock wise.
-void openGlDrawRectCenterDim_gradient(V3 center, V2 dim, V4 *colors, float rot, Matrix4 offsetTransform, float zoom, Matrix4 projectionMatrix) {
+void openGlDrawRectCenterDim_gradient(GLBufferHandles *handles, V3 center, V2 dim, V4 *colors, float rot, Matrix4 offsetTransform, float zoom, Matrix4 projectionMatrix) {
 #if FIXED_FUNCTION_PIPELINE
     glDisable(GL_TEXTURE_2D);
 #endif
-    openGlDrawRectCenterDim_(center, dim, colors, rot, offsetTransform, 0, SHAPE_RECTANGLE_GRAD, rectangleProgram.glProgram, zoom, projectionMatrix);
+    openGlDrawRectCenterDim_(handles, center, dim, colors, rot, offsetTransform, 0, SHAPE_RECTANGLE_GRAD, rectangleProgram.glProgram, zoom, mat4(), projectionMatrix);
 #if FIXED_FUNCTION_PIPELINE
     glLoadIdentity();
     glEnable(GL_TEXTURE_2D);
@@ -844,14 +1093,14 @@ void openGlDrawRectCenterDim_gradient(V3 center, V2 dim, V4 *colors, float rot, 
 }
 
 
-void openGlTextureCentreDim(GLuint textureId, V3 center, V2 dim, V4 color, float rot, Matrix4 offsetTransform, float zoom, Matrix4 projectionMatrix) {
+void openGlTextureCentreDim(GLBufferHandles *handles, GLuint textureId, V3 center, V2 dim, V4 color, float rot, Matrix4 offsetTransform, float zoom, Matrix4 viewMatrix, Matrix4 projectionMatrix) {
 #if FIXED_FUNCTION_PIPELINE
     glEnable(GL_TEXTURE_2D);
     glBindTexture(GL_TEXTURE_2D, textureId); 
 #endif
     
     V4 colors[4] = {color, color, color, color}; 
-    openGlDrawRectCenterDim_(center, dim, colors, rot, offsetTransform, textureId, SHAPE_TEXTURE, textureProgram.glProgram, zoom, projectionMatrix);
+    openGlDrawRectCenterDim_(handles, center, dim, colors, rot, offsetTransform, textureId, SHAPE_TEXTURE, textureProgram.glProgram, zoom, viewMatrix, projectionMatrix);
     glBindTexture(GL_TEXTURE_2D, 0); 
 #if FIXED_FUNCTION_PIPELINE
     glLoadIdentity();
@@ -860,7 +1109,11 @@ void openGlTextureCentreDim(GLuint textureId, V3 center, V2 dim, V4 color, float
 }
 
 
-void openGlDrawCircle(V3 center, V2 dim, V4 color, Matrix4 offsetTransform, float zoom, Matrix4 projectionMatrix) {
+#define openGlDrawCircle(handles, center, dim, color, offsetTransform, zoom, viewMatrix, projectionMatrix) openGlDrawCircle_(handles, center, dim, color, offsetTransform, zoom, viewMatrix, projectionMatrix, circleProgram)
+#define openGlDrawLight(handles, center, dim, color, offsetTransform, zoom, viewMatrix, projectionMatrix) openGlDrawCircle_(handles, center, dim, color, offsetTransform, zoom, viewMatrix, projectionMatrix, lightProgram)
+#define openGlDrawRing(handles, center, dim, color, offsetTransform, zoom, viewMatrix, projectionMatrix) openGlDrawCircle_(handles, center, dim, color, offsetTransform, zoom, viewMatrix, projectionMatrix, ringProgram)
+
+void openGlDrawCircle_(GLBufferHandles *handles, V3 center, V2 dim, V4 color, Matrix4 offsetTransform, float zoom, Matrix4 viewMatrix, Matrix4 projectionMatrix, GlProgram program) {
     
 #if FIXED_FUNCTION_PIPELINE
     glMatrixMode(GL_MODELVIEW);
@@ -923,7 +1176,7 @@ void openGlDrawCircle(V3 center, V2 dim, V4 color, Matrix4 offsetTransform, floa
     glLoadIdentity();
 #else
     V4 colors[4] = {color, color, color, color};
-    openGlDrawRectCenterDim_(center, dim, colors, 0, offsetTransform, 0, SHAPE_CIRCLE, circleProgram.glProgram, zoom, projectionMatrix);
+    openGlDrawRectCenterDim_(handles, center, dim, colors, 0, offsetTransform, 0, SHAPE_CIRCLE, program.glProgram, zoom, viewMatrix, projectionMatrix);
 #endif
 #if FIXED_FUNCTION_PIPELINE
     glEnable(GL_TEXTURE_2D);
@@ -1040,7 +1293,7 @@ void getLineVertices(CookedData *lastData, V2 begin_, V2 end_, V4 color, float t
     
 }
 
-void openGlDrawLine(V2 begin_, V2 end_, V4 color, float thickness, Matrix4 offsetTransform, GLBufferHandles *handles, CookedData *data, float zoom) {
+void openGlDrawLine(GLBufferHandles *handles, V2 begin_, V2 end_, V4 color, float thickness, Matrix4 offsetTransform, CookedData *data, float zoom) {
 #if FIXED_FUNCTION_PIPELINE
     assert(!"Not implemented");
 #else
@@ -1050,13 +1303,55 @@ void openGlDrawLine(V2 begin_, V2 end_, V4 color, float thickness, Matrix4 offse
     }
     getLineVertices(0, begin_, end_, color, thickness, offsetTransform, data, 0);
     
-    loadVertices(data->triangleData, arrayCount(data->triangleData), data->indicesData, arrayCount(data->indicesData), rectangleProgram.glProgram, SHAPE_LINE, 0, mat4(), zoom); //TODO: HACK: this thickness thickness is not right 
+    if(globalImmediateModeGraphics) {
+        loadVertices(handles, data->triangleData, arrayCount(data->triangleData), data->indicesData, arrayCount(data->indicesData), rectangleProgram.glProgram, SHAPE_LINE, 0, mat4(), zoom, color); //TODO: HACK: this thickness thickness is not right 
+    } else {
+        pushRenderItem(handles, &globalRenderGroup, data->triangleData, arrayCount(data->triangleData), data->indicesData, arrayCount(data->indicesData), rectangleProgram.glProgram, SHAPE_LINE, 0, mat4(), zoom, color);
+    }        
+    
 #endif
 };
+
 void OpenGLdeleteBufferHandles(GLBufferHandles *handles) {
-    glDeleteBuffers(1, &handles->verticesIndex);
-    glDeleteBuffers(1, &handles->indicesIndex);
+    glDeleteBuffers(1, &handles->vaoHandle);
+    handles->indexCount = 0;
     handles->valid = false;
+}
+
+void drawRenderGroup(RenderGroup *group) {
+    int bufferHandles = 0;
+    for(int i = 0; i < group->items.count; ++i) {
+        RenderItem *info = (RenderItem *)getElementFromAlloc_(&group->items, i);
+        glBindFramebuffer(GL_FRAMEBUFFER, info->bufferId);
+
+        if(info->depthTest) {
+            glEnable(GL_DEPTH_TEST);
+        } else {
+            glDisable(GL_DEPTH_TEST);
+        }
+
+        switch(info->blendFuncType) {
+            case BLEND_FUNC_ZERO_ONE_ZERO_ONE_MINUS_ALPHA: {
+                glBlendFuncSeparate(GL_ZERO, GL_ONE, GL_ZERO, GL_ONE_MINUS_SRC_ALPHA);
+            } break;
+            case BLEND_FUNC_STANDARD: {
+                glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+            } break;
+            default: {
+                assert(!"case not handled");
+            }
+        }
+
+        loadVertices(info->bufferHandles, (Vertex *)info->triangleData.memory, info->triCount, (unsigned int *)info->indicesData.memory, info->indexCount, info->programId, info->type, info->textureId, info->PVM, info->zoom, info->color);
+        if(info->bufferHandles && info->bufferHandles->valid) {
+            bufferHandles++;
+        }
+        releaseInfiniteAlloc(&info->triangleData);
+        releaseInfiniteAlloc(&info->indicesData);
+    }
+    //printf("Buffer Handles: %d, Non Buffer Handles: %d\n", bufferHandles, group->renderCount - bufferHandles);
+    releaseInfiniteAlloc(&group->items);
+    group->idAt = 0;
 }
 
 typedef struct {
@@ -1065,18 +1360,12 @@ typedef struct {
     int height;
 } Texture;
 
-Texture loadImage(char *fileName) {
+Texture createTextureOnGPU(unsigned char *image, int w, int h, int comp) {
     Texture result = {};
-    
-    int w;
-    int h;
-    int comp = 4;
-    unsigned char* image = stbi_load(fileName, &w, &h, &comp, STBI_rgb_alpha);
-    
-    result.width = w;
-    result.height = h;
-    
     if(image) {
+
+        result.width = w;
+        result.height = h;
         
         glGenTextures(1, &result.id);
         
@@ -1086,10 +1375,6 @@ Texture loadImage(char *fileName) {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         
         if(comp == 3) {
-            stbi_image_free(image);
-            image = stbi_load(fileName, &w, &h, &comp, STBI_rgb);
-            assert(image);
-            assert(comp == 3);
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGB, GL_UNSIGNED_BYTE, image);
         } else if(comp == 4) {
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, image);
@@ -1098,11 +1383,33 @@ Texture loadImage(char *fileName) {
         }
         
         glBindTexture(GL_TEXTURE_2D, 0);
-        
-        stbi_image_free(image);
-    } else { 
+    } 
+
+    return result;
+}
+
+Texture loadImage(char *fileName) {
+    int w;
+    int h;
+    int comp = 4;
+    unsigned char* image = stbi_load(fileName, &w, &h, &comp, STBI_rgb_alpha);
+
+    if(image) {
+        if(comp == 3) {
+            stbi_image_free(image);
+            image = stbi_load(fileName, &w, &h, &comp, STBI_rgb);
+            assert(image);
+            assert(comp == 3);
+        }
+    } else {
         printf("%s\n", fileName);
         assert(!"no image found");
+    }
+    
+    Texture result = createTextureOnGPU(image, w, h, comp);
+
+    if(image) {
+        stbi_image_free(image);
     }
     return result;
 }

@@ -97,18 +97,30 @@ void *getElementFromAlloc_(InfiniteAlloc *arena, int index)  {
     return memAt;
 }
 
-void addElementInifinteAllocWithCount_(InfiniteAlloc *arena, void *data, int count) {
+void *addElementInifinteAllocWithCount_(InfiniteAlloc *arena, void *data, int count) {
     expandMemoryArray_(arena, count);
     assert((arena->count + count) < arena->totalCount);
     u8 *memAt = (u8 *)arena->memory + (arena->sizeOfMember*arena->count);
     arena->count += count;
-    memcpy(memAt, data, arena->sizeOfMember*count);
+    if(data) {
+        memcpy(memAt, data, arena->sizeOfMember*count);
+    } else {
+        memset(memAt, 0, arena->sizeOfMember*count);
+    }
+    return memAt;
 }
 
 #define addElementInifinteAlloc_(arena, data) addElementInifinteAllocWithCount_(arena, data, 1)
 
 void releaseInfiniteAlloc(InfiniteAlloc *arena) {
-    free(arena->memory);
+    if(arena->memory) {
+        free(arena->memory);
+        memset(arena, 0, sizeof(InfiniteAlloc));
+    }
+}
+
+bool isInfinteAllocActive(InfiniteAlloc *arena) {
+    return (bool)arena->memory;
 }
 
 Pool *initPool(Array_Dynamic *array, size_t sizeofType, unsigned int id) {
