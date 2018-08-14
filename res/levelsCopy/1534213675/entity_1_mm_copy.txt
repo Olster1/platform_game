@@ -1,0 +1,34 @@
+Entity: {
+
+}
+Commons: {
+	id: 1;
+	name: "player";
+	flags: 251;
+	type: "ENT_TYPE_DEFAULT";
+	position: -2.449627 2.189891 -1.000000;
+	velocity: 0.000000 0.404040 0.000000;
+	renderPosOffset: 0.000000 0.000000 0.000000;
+	dim: 1.000000 1.000000 1.000000;
+	renderScale: 1.000000 1.000000 1.000000;
+	shading: 1.000000 1.000000 1.000000 1.000000;
+	texture: "door1.png";
+	inverseWeight: 1.000000;
+	angle: 0.000000;
+	animation: "knight animation";
+
+}
+ParticleSystem: {
+	MaxLifeSpan: 3.000000;
+	loop: false;
+	offsetP: 0.000000 0.000000 0.000000;
+	particleLifeSpan: 119.999992;
+	bitmapScale: 0.800000;
+	bitmapCount: 0;
+	posBias: [0.000000, 0.000000, 0.000000, 0.000000];
+	velBias: [0.000000, 0.000000, 0.000000, 0.000000];
+	collidesWithFloor: false;
+	pressureAffected: true;
+	active: false;
+
+}

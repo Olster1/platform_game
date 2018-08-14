@@ -1,5 +1,6 @@
 typedef enum {
     VAR_CHAR_STAR,
+    VAR_LONG_UNSIGNED_INT,
     VAR_LONG_INT,
     VAR_INT,
     VAR_FLOAT,
@@ -16,7 +17,7 @@ void addVar_(InfiniteAlloc *mem, void *val_, int count, char *varName, VarType t
     addElementInifinteAllocWithCount_(mem, data, strlen(data));
 
     if(count > 0) {
-        if(count > 1 && !(type == VAR_CHAR_STAR || type == VAR_INT)) {
+        if(count > 1 && !(type == VAR_CHAR_STAR || type == VAR_INT || type == VAR_FLOAT)) {
             assert(!"array not handled yet");
         }
         switch(type) {
@@ -46,8 +47,12 @@ void addVar_(InfiniteAlloc *mem, void *val_, int count, char *varName, VarType t
                     
                 }
             } break;
-            case VAR_LONG_INT: {
+            case VAR_LONG_UNSIGNED_INT: {
                 unsigned long *val = (unsigned long *)val_;
+                sprintf(data, "%lu", val[0]);
+            } break;
+            case VAR_LONG_INT: {
+                long *val = (long *)val_;
                 sprintf(data, "%ld", val[0]);
             } break;
             case VAR_INT: {
@@ -74,8 +79,27 @@ void addVar_(InfiniteAlloc *mem, void *val_, int count, char *varName, VarType t
                 }
             } break;
             case VAR_FLOAT: {
-                float *val = (float *)val_;
-                sprintf(data, "%f", val[0]);
+                if(count == 1) {
+                    float *val = (float *)val_;
+                    sprintf(data, "%f", val[0]);
+                } else {
+                    assert(count > 1);
+
+                    float *val = (float *)val_;
+                    char *bracket = "[";
+                    addElementInifinteAllocWithCount_(mem, bracket, 1);
+                    for(int i = 0; i < count; ++i) {
+                        sprintf(data, "%f", val[i]);    
+                        addElementInifinteAllocWithCount_(mem, data, strlen(data));
+                        if(i != count - 1) {
+                            char *commaString = ", ";
+                            addElementInifinteAllocWithCount_(mem, commaString, 2);
+                        }
+                    }
+                    bracket = "]";
+                    addElementInifinteAllocWithCount_(mem, bracket, 1);
+                    data[0] = 0; //clear data
+                }
             } break;
             case VAR_V2: {
                 float *val = (float *)val_;
@@ -119,7 +143,7 @@ typedef struct {
             char stringVal[256];
         };
         struct {
-            int intVal;
+            unsigned long intVal;
         };
         struct {
             bool boolVal;
@@ -155,7 +179,8 @@ InfiniteAlloc getDataObjects(EasyTokenizer *tokenizer) {
                 DataObject data = {};
                 data.type = VAR_INT;
                 char charBuffer[256] = {};
-                int value = atoi(nullTerminateBuffer(charBuffer, token.at, token.size));
+                char *endptr;
+                unsigned long value = strtoul(nullTerminateBuffer(charBuffer, token.at, token.size), &endptr, 10);
                 data.intVal = value;
                 addElementInifinteAlloc_(&types, &data);
             } break;
@@ -244,12 +269,16 @@ char *getStringFromDataObjects(InfiniteAlloc *data, EasyTokenizer *tokenizer) {
     return result;
 }
 
-int getIntFromDataObjects(InfiniteAlloc *data, EasyTokenizer *tokenizer) {
+#define getIntFromDataObjects(data, tokenizer) (int)getIntFromDataObjects_(data, tokenizer)
+#define getULongFromDataObjects(data, tokenizer) getIntFromDataObjects_(data, tokenizer)
+#define getLongFromDataObjects(data, tokenizer) (long)getIntFromDataObjects_(data, tokenizer)
+
+unsigned long getIntFromDataObjects_(InfiniteAlloc *data, EasyTokenizer *tokenizer) {
     *data = getDataObjects(tokenizer);
     DataObject *objs = (DataObject *)data->memory;
     assert(objs[0].type == VAR_INT);
     
-    int result = objs[0].intVal;
+    unsigned long result = objs[0].intVal;
 
     return result;
 }

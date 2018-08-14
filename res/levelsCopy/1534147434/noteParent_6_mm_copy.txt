@@ -1,0 +1,38 @@
+NoteParent: {
+	solved: false;
+	showChildren: false;
+	noteValueCount: 2;
+	noteParentType: "NOTE_PARENT_TIME";
+	noteSequenceIds: [7, 8];
+	eventID: 2;
+
+}
+Commons: {
+	id: 6;
+	name: "(null)";
+	flags: 177;
+	type: "ENT_TYPE_DEFAULT";
+	position: -8.660924 2.229484 -1.000000;
+	velocity: 0.000000 0.000000 0.000000;
+	renderPosOffset: 0.000000 0.000000 0.000000;
+	dim: 1.000000 1.000000 1.000000;
+	renderScale: 1.000000 1.000000 4.017924;
+	shading: 1.000000 1.000000 1.000000 1.000000;
+	texture: "stevinus.png";
+	inverseWeight: 0.000000;
+	angle: 0.016000;
+
+}
+ParticleSystem: {
+	MaxLifeSpan: 3.000000;
+	loop: false;
+	offsetP: 0.000000 0.000000 0.000000;
+	particleLifeSpan: 119.999992;
+	bitmapCount: 0;
+	posBias: [-0.010000, -0.010000, 0.000000, 0.000000];
+	velBias: [-1.000000, -1.000000, 1.000000, 1.000000];
+	collidesWithFloor: false;
+	pressureAffected: true;
+	active: false;
+
+}

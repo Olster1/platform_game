@@ -178,14 +178,35 @@ V2 transformWorldPToScreenP(V2 inputA, float zPos, float width, float height, V2
     return result;
 }
 
+NoteParent *getLatestParent(Note *note) {
+    NoteParent *parent = 0;
+    //Get the latest parent to push to. 
+    //Maybe do something if they are all solved find the one that is in a collision dim?
+    for(int i = 0; i < note->parentCount; ++i) {
+        parent = note->parents[i];
+        if(!parent->solved) {
+            break;
+        }
+    }
+    assert(parent);
+    return parent;
+}
+
+void playChord(Arena *arena, Note **notes, int noteCount) {
+    for(int noteAt = 0; noteAt < noteCount; ++noteAt) {
+        Asset *soundToPlay = notes[noteAt]->sound;
+        playGameSound(arena, getSoundAsset(soundToPlay), 0, AUDIO_FOREGROUND);
+    }
+}
+
 void submitSoundToParent(Note *note, NoteParent **showPuzzleProgress, Timer *showPuzzleProgressTimer, int *bestPuzzleMatchSoFar, LerpV4 *puzzleProgressColorLerp, Event **currentEvent, Asset *solvedPuzzleSound, NoteParent **lastNoteParent) {
-    NoteParent *parent = note->parent;
-    addValueToNoteParent(note->parent, note->value);
+    NoteParent *parent = getLatestParent(note);
+    addValueToNoteParent(parent, note->value);
     
     *lastNoteParent = parent;
 
     playGameSound(&arena, getSoundAsset(note->sound), 0, AUDIO_FOREGROUND);
-    *showPuzzleProgress = note->parent;
+    *showPuzzleProgress = parent;
     setLerpInfoV4_s(puzzleProgressColorLerp, COLOR_WHITE, 0.5f, &puzzleProgressColorLerp->value);
 
     assert(parent->valueCount);
@@ -197,7 +218,7 @@ void submitSoundToParent(Note *note, NoteParent **showPuzzleProgress, Timer *sho
         bool keepLooking = true;
         *bestPuzzleMatchSoFar = 0;
         for(int parIndex = 0; parIndex < parent->noteValueCount && keepLooking; ++parIndex) {
-            NoteValue parVal = parent->sequence[parIndex]->value;
+            ChordInfo parVal = parent->sequence[parIndex];
             int testIndex = noteIndex + parIndex;
             //wrap index
             if(testIndex >= parent->valueCount) {
@@ -207,8 +228,12 @@ void submitSoundToParent(Note *note, NoteParent **showPuzzleProgress, Timer *sho
             //
 
             if(testIndex != startIndex || noteIndex == startIndex) { //could overflow past the parent values 
-                NoteValue val = parent->values[testIndex];
-                if(parVal != val) {
+                ChordInfo val = parent->values[testIndex];
+                bool equalToEachOther = (val.count == parVal.count);
+                for(int valIndex = 0; (valIndex < val.count) && equalToEachOther; ++valIndex) {
+                    equalToEachOther &= (val.values_[valIndex] == parVal.values_[valIndex]);
+                }
+                if(equalToEachOther) {
                     keepLooking = false;
                 } else {
                     *bestPuzzleMatchSoFar = (*bestPuzzleMatchSoFar) + 1;
@@ -304,7 +329,7 @@ int main(int argc, char *args[]) {
         float screenRelativeSize = resolution.x / screenDim.x; 
         
         windowHandle = SDL_CreateWindow(
-            "ADVENTURE",
+            "NOTE RUNNER",
             SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 
             screenDim.x, 
             screenDim.y, 
@@ -476,6 +501,7 @@ int main(int argc, char *args[]) {
         Asset *flora3Tex = findAsset("flora3.png");
         Asset *enterKeyTex = findAsset("enter_key.png");
         Asset *crateTex = findAsset("crate.jpg");
+        Asset *starTex = findAsset("stars.png");
 
         //TODO: change this to use an Asset type
         globalFireTex_debug = loadImage(concat(globalExeBasePath, (char *)"img/fire.png"));
@@ -553,7 +579,7 @@ int main(int argc, char *args[]) {
         
         Tweaker tweaker = {};
         char *tweakFile = concat(globalExeBasePath, "../src/tweakFile.txt");
-        //refreshTweakFile(tweakFile, &tweaker);
+
 
         ///IMGUI variables
         float xPower = 60;
@@ -593,8 +619,27 @@ int main(int argc, char *args[]) {
 
         char *loadDir = concat(globalExeBasePath, "levels/");
         char *loadProgressDir = concat(globalExeBasePath, "progress/");
+        bool loadFresh = true;
 
-        loadLevelFromFile(gameState, loadDir, "level1");
+//THIS IS LOADING UP A PLAYERS GAME WHERE THEY LEFT OFF LAST TIME
+        Tweaker gameSessionTweaker = {};
+        char *gameSessionTweakFile = concat(globalExeBasePath, "../res/gameSession.txt");
+        refreshTweakFile(gameSessionTweakFile, &gameSessionTweaker);
+        long progressId = getLongFromTweakData(&gameSessionTweaker, "saveSlot");
+        if(progressId != 0) {
+            char progressString[256] = {};
+            sprintf(progressString, "%ld", progressId);
+            char folderName[256] = {};
+            sprintf(folderName, "%s%s", loadProgressDir, progressString);
+            if(platformDoesDirectoryExist(folderName)) {
+                loadFresh = false;
+                loadLevelFromFile(gameState, loadProgressDir, progressString);
+            }
+        }
+        if(loadFresh) {
+            loadLevelFromFile(gameState, loadDir, "level1");       
+        }
+//
 
         MenuInfo menuInfo = {};
         menuInfo.font = &mainFontLarge;
@@ -658,8 +703,7 @@ int main(int argc, char *args[]) {
             assert(gameButtons[BUTTON_LEFT_MOUSE].transitionCount == 0);
             //ask player for new input
             SDL_Event event;
-            bool submitTurn = false;
-            char *outputFilename;
+            int scrollWheelY = 0;
             
             while( SDL_PollEvent( &event ) != 0 ) {
 #if IMGUI_ON
@@ -676,6 +720,8 @@ int main(int argc, char *args[]) {
                     }
                 }  else if( event.type == SDL_QUIT ) {
                     running = false;
+                } else if(event.type == SDL_MOUSEWHEEL) {
+                    scrollWheelY = event.wheel.y;
                 } else if(event.type == SDL_KEYDOWN || event.type == SDL_KEYUP) {
                     
                     SDL_Keycode keyCode = event.key.keysym.sym;
@@ -771,6 +817,9 @@ int main(int argc, char *args[]) {
                 
                 bool rightMouseDown = mouseState & SDL_BUTTON_RMASK;
                 sdlProcessGameKey(&gameButtons[BUTTON_RIGHT_MOUSE], rightMouseDown, rightMouseDown == mouseWasDownRight);
+            } else {
+                //Busy in the editor 
+                scrollWheelY = 0;
             }
 
             ////GET JOYSTICK INPUT
@@ -782,7 +831,7 @@ int main(int argc, char *args[]) {
             ///////
 
             //////CLEAR BUFFERS 
-            clearBufferAndBind(0, COLOR_PINK);
+            clearBufferAndBind(0, COLOR_BLACK);
             clearBufferAndBind(finalCompositedBuffer.bufferId, COLOR_PINK);
             clearBufferAndBind(lightFrameBuffer.bufferId, COLOR_NULL);
 #define MULTI_SAMPLE 1
@@ -802,6 +851,7 @@ int main(int argc, char *args[]) {
             ///////EDITOR INPUT///////
             if(wasPressed(gameButtons, BUTTON_TILDE)) {
                 debugUI_isOn = !debugUI_isOn;
+                followPlayer = !debugUI_isOn;
             }
             if(wasPressed(gameButtons, BUTTON_ENTER) && isDown(gameButtons, BUTTON_SHIFT)) {
                 gravityIsOn = !gravityIsOn;
@@ -1004,6 +1054,12 @@ int main(int argc, char *args[]) {
                 
             }
 
+#if DEVELOPER_MODE
+            if(debugUI_isOn) {
+                gameState->camera->pos.z += 0.3f*dt*scrollWheelY;
+            }
+#endif
+
 
 
             //PLATFORM UPDATES
@@ -1152,8 +1208,10 @@ int main(int argc, char *args[]) {
                                         ent->autoSoundAt = 0;
                                     }
                                     assert(index < ent->noteValueCount && index >= 0);
-                                    if(ent->sequence[index]->isPlayedByParent) {
-                                        submitSoundToParent(ent->sequence[index], &showPuzzleProgress, &showPuzzleProgressTimer, &bestPuzzleMatchSoFar, &puzzleProgressColorLerp, &currentEvent, solvedPuzzleSound, &lastNoteParent);
+                                    for(int noteAt = 0; noteAt < ent->sequence[index].count; ++noteAt) {
+                                        if(ent->sequence[index].isPlayedByParent[noteAt]) {
+                                            submitSoundToParent(ent->sequence[index].notes_[noteAt], &showPuzzleProgress, &showPuzzleProgressTimer, &bestPuzzleMatchSoFar, &puzzleProgressColorLerp, &currentEvent, solvedPuzzleSound, &lastNoteParent);
+                                        }
                                     }
                                 }
                             }
@@ -1175,8 +1233,9 @@ int main(int argc, char *args[]) {
                         playingParentNote->soundAt = 1; //we play the first sound here. 
                         
                         playingParentNote->soundTimer = initTimer(nextSoundPer);
-                        Asset *soundToPlay = notes[playingParentNote->sequence[0]->value];
-                        playGameSound(&arena, getSoundAsset(soundToPlay), 0, AUDIO_FOREGROUND);
+
+                        playChord(&arena, playingParentNote->sequence[0].notes_, playingParentNote->sequence[0].count);
+                        
                         setChannelVolume(AUDIO_BACKGROUND, LOW_VOLUME, 0.5f);
                         Reactivate(playingParentNote->e->particleSystem);
                         playingParentNote->e->shading = shadeColorForBlock;
@@ -1212,8 +1271,9 @@ int main(int argc, char *args[]) {
                         playingParentNote->e->shading = shadeColorForBlock;
                         setLerpInfoV4_s(&playingParentNote->shadingLerp, COLOR_WHITE, nextSoundPer, &playingParentNote->e->shading);
 
-                        Asset *soundToPlay = notes[playingParentNote->sequence[playingParentNote->soundAt++]->value];
-                        playGameSound(&arena, getSoundAsset(soundToPlay), 0, AUDIO_FOREGROUND);
+                        ChordInfo chordInfo = playingParentNote->sequence[playingParentNote->soundAt++];
+                        playChord(&arena, chordInfo.notes_, chordInfo.count);
+                        //playGameSound(&arena, getSoundAsset(soundToPlay), 0, AUDIO_FOREGROUND);
                         Reactivate(playingParentNote->e->particleSystem);
                     }
                 }
@@ -1233,7 +1293,9 @@ int main(int argc, char *args[]) {
                     ent->e->renderPosOffset.y = wiggleFactor*sin(TAU32*timerInfo.canonicalVal);
                     //
 
-                    if(ent->parent->showChildren) {
+                    NoteParent *par = ent->parents[0];
+                    assert(ent->parentCount > 0);
+                    if(par->showChildren) {
                         if(!ent->timerHasRun) {
                             setLerpInfoV4_s(&ent->fadeInLerp, COLOR_WHITE, 1.0f, &ent->e->comeBackShading.value);
                             ent->timerHasRun = true;
@@ -1291,7 +1353,7 @@ int main(int argc, char *args[]) {
                 //this is so we don't double collide with notes
                 turnTimerOn(&lastNoteTimer);
 
-                assert(note->parent);
+                //assert(note->parent);
 
                 submitSoundToParent(note, &showPuzzleProgress, &showPuzzleProgressTimer, &bestPuzzleMatchSoFar, &puzzleProgressColorLerp, &currentEvent, solvedPuzzleSound, &lastNoteParent);
             }
@@ -1582,17 +1644,19 @@ int main(int argc, char *args[]) {
                 V3 renderColDim = transformPositionV3(ent->dim, metresToPixels);
                 //
 
-                //This is for the editor to pick up entities 
-                //Region that would actually be occupied on the screen after the GPU projects it onto the screen 
-                Rect2f entBounds = rect2fCenterDimV2(transformedPos.xy, renderInfo.transformDim.xy);
-
-                entBounds.min = transformWorldPToScreenP(entBounds.min, transformedPos.z, bufferWidth, bufferHeight, middleP);
-                entBounds.max = transformWorldPToScreenP(entBounds.max, transformedPos.z, bufferWidth, bufferHeight, middleP);
-                /////
-
-
 #if DEVELOPER_MODE
                 if(debugUI_isOn) {
+
+                    //We do this again without the render scale so its easier to select entities!
+                    RenderInfo editorRenderInfo = calculateRenderInfo(v3_plus(ent->pos, ent->renderPosOffset), ent->dim, gameState->camera->pos, metresToPixels);
+                    //This is for the editor to pick up entities 
+                    //Region that would actually be occupied on the screen after the GPU projects it onto the screen 
+                    Rect2f entBounds = rect2fCenterDimV2(editorRenderInfo.transformPos.xy, editorRenderInfo.transformDim.xy);
+
+                    entBounds.min = transformWorldPToScreenP(entBounds.min, editorRenderInfo.transformPos.z, bufferWidth, bufferHeight, middleP);
+                    entBounds.max = transformWorldPToScreenP(entBounds.max, editorRenderInfo.transformPos.z, bufferWidth, bufferHeight, middleP);
+                    /////
+
                     V4 outlineColor = COLOR_NULL;
                     float pixelHandleSize = 10; //TODO: do we want to make this a percentage
                     if(inBounds(mouseP_yUp, entBounds, BOUNDS_RECT)) {
@@ -1624,7 +1688,21 @@ int main(int argc, char *args[]) {
                         }
                          openGlDrawRectCenterDim(0, transformedPos, v2_plus(renderColDim.xy, v2(10, 10)), outlineColor, ent->angle, mat4(), 1, projectionMatrixToScreen(bufferWidth, bufferHeight));
 
-                     }
+                     }  
+                     GLuint edTexId = 0;
+                     bool drawHelpIcon = false;
+                     if(ent->entType == ENTITY_TYPE_PARTICLE_SYSTEM) {
+                        edTexId = getTextureAsset(starTex)->id;
+                        drawHelpIcon = true;
+                    } else if(ent->entType == ENTITY_TYPE_LIGHT) {
+                        edTexId = getTextureAsset(starTex)->id;
+                        drawHelpIcon = true;
+                    }
+
+                    if(drawHelpIcon) {
+                        openGlTextureCentreDim(&ent->bufferHandles, edTexId, renderPos, renderDim.xy, COLOR_WHITE, 0, mat4(), 1, mat4(), Mat4Mult(projectionMatrixToScreen(bufferWidth, bufferHeight), renderInfo.pvm));
+                    }
+
                  }
 #endif  
                 if(ent->tex) {
@@ -1685,7 +1763,7 @@ int main(int argc, char *args[]) {
         for(int entIndex = 0; entIndex < gameState->commons.count; entIndex++) {
             Entity_Commons *ent = (Entity_Commons *)getElement(&gameState->commons, entIndex);
             if(ent && isFlagSet(ent, ENTITY_VALID) && !isFlagSet(ent, ENTITY_CAMERA)) {
-                drawAndUpdateParticleSystem(ent->particleSystem, dt, ent->pos, v3(0, 0, 0), gameState->camera->pos, metresToPixels);
+                drawAndUpdateParticleSystem(ent->particleSystem, dt, v3_plus(ent->pos, ent->particleSystem->Set.offsetP), v3(0, 0, 0), gameState->camera->pos, metresToPixels);
             }
         }
         
@@ -1707,38 +1785,40 @@ int main(int argc, char *args[]) {
             for(int noteIndex = 0; noteIndex < parent->noteValueCount; ++noteIndex) {
                 assert(noteIndex < MAX_NOTE_SEQUENCE_SIZE);
                 //TODO: take account of minor notes. 
-                Note *thisNote = parent->sequence[noteIndex];
-                float value = (float)thisNote->value / (float)NOTE_COUNT;
-                float yAt = lerp(yAtMin, value, yAtMax);
-                xAt += widthPerNote;
+                ChordInfo *thisChord = parent->sequence + noteIndex;
+                xAt += widthPerNote;//only move after each chord
+                for(int noteAt = 0; noteAt < thisChord->count; noteAt++) {
+                    float value = (float)thisChord->values_[noteAt] / (float)NOTE_COUNT;
+                    float yAt = lerp(yAtMin, value, yAtMax);
 
-                LerpV4 *thisLerp = parent->puzzleShadeLerp + noteIndex;
+                    LerpV4 *thisLerp = parent->puzzleShadeLerp + noteIndex;
 
-                updateLerpV4(thisLerp, dt, SMOOTH_STEP_01);
+                    updateLerpV4(thisLerp, dt, SMOOTH_STEP_01);
 
-                V4 color = COLOR_NULL;
-                if(noteIndex < bestPuzzleMatchSoFar) {
-                    setLerpInfoV4_s(thisLerp, COLOR_YELLOW, 0.5f, &thisLerp->value);
-                }
-                color = v4_hadamard(puzzleProgressColorLerp.value, thisLerp->value);
-
-                GLBufferHandles *thisRenderHandle = &parent->puzzleProgressRenderHandles[noteIndex];
-
-                //MAKE THIS MORE SCREEN RESOLUTION INDEPENENT
-                V2 circleDim = v2(70, 70);
-                V3 helperPos = v3(xAt, yAt, -1);
-                Rect2f circleBounds = rect2fCenterDim(xAt, yAt, 0.3f*circleDim.x, 0.3f*circleDim.y);
-                if(inBounds(mouseP, circleBounds, BOUNDS_CIRCLE)) {
-                    if(wasPressed(gameButtons, BUTTON_LEFT_MOUSE)) {
-                        playGameSound(&arena, getSoundAsset(thisNote->sound), 0, AUDIO_FOREGROUND);
-                        pushRenderCircle(&gameState->renderCircles, helperPos, v3(0.0f, 0.0f, 0.0f), v3(30.0f, 30.0f, 30.0f), 2.0f, COLOR_YELLOW, SCREEN_RENDER);
-                    } else if(!hotHelperParent.parent || hotHelperParent.parent != parent || (hotHelperParent.parent == parent && hotHelperParent.index != noteIndex)) {
-                        pushRenderCircle(&gameState->renderCircles, helperPos, v3(15.0f, 15.0f, 15.0f), v3(0.0f, 0.0f, 0.0f), 0.7f, COLOR_YELLOW, SCREEN_RENDER);
+                    V4 color = COLOR_NULL;
+                    if(noteIndex < bestPuzzleMatchSoFar) {
+                        setLerpInfoV4_s(thisLerp, COLOR_YELLOW, 0.5f, &thisLerp->value);
                     }
-                    nextHelperParent.index = noteIndex;
-                    nextHelperParent.parent = parent;
+                    color = v4_hadamard(puzzleProgressColorLerp.value, thisLerp->value);
+
+                    GLBufferHandles *thisRenderHandle = &parent->puzzleProgressRenderHandles[noteIndex];
+
+                    //MAKE THIS MORE SCREEN RESOLUTION INDEPENENT
+                    V2 circleDim = v2(70, 70);
+                    V3 helperPos = v3(xAt, yAt, -1);
+                    Rect2f circleBounds = rect2fCenterDim(xAt, yAt, 0.3f*circleDim.x, 0.3f*circleDim.y);
+                    if(inBounds(mouseP, circleBounds, BOUNDS_CIRCLE)) {
+                        if(wasPressed(gameButtons, BUTTON_LEFT_MOUSE)) {
+                            playGameSound(&arena, getSoundAsset(thisChord->notes_[noteAt]->sound), 0, AUDIO_FOREGROUND);
+                            pushRenderCircle(&gameState->renderCircles, helperPos, v3(0.0f, 0.0f, 0.0f), v3(30.0f, 30.0f, 30.0f), 2.0f, COLOR_YELLOW, SCREEN_RENDER);
+                        } else if(!hotHelperParent.parent || hotHelperParent.parent != parent || (hotHelperParent.parent == parent && hotHelperParent.index != noteIndex)) {
+                            pushRenderCircle(&gameState->renderCircles, helperPos, v3(15.0f, 15.0f, 15.0f), v3(0.0f, 0.0f, 0.0f), 0.7f, COLOR_YELLOW, SCREEN_RENDER);
+                        }
+                        nextHelperParent.index = noteIndex;
+                        nextHelperParent.parent = parent;
+                    }
+                    openGlDrawCircle(thisRenderHandle, helperPos, circleDim, color, mat4TopLeftToBottomLeft(bufferHeight), 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1), mat4());
                 }
-                openGlDrawCircle(thisRenderHandle, helperPos, circleDim, color, mat4TopLeftToBottomLeft(bufferHeight), 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1), mat4());
             }
         }
         hotHelperParent = nextHelperParent;
@@ -1891,14 +1971,17 @@ int main(int argc, char *args[]) {
 
                                                 initNoteEnt(&gameState->commons, newNoteEnt, &gameState->particleSystems, notePos, noteTex, noteSound, gameState->ID++);
 
-                                                newNoteEnt->parent = mostRecentParentNote;
-                                                assert(newNoteEnt->parent);
+                                                assert(newNoteEnt->parentCount < arrayCount(newNoteEnt->parents));
+                                                newNoteEnt->parents[newNoteEnt->parentCount++] = mostRecentParentNote;
+                                                //assert(newNoteEnt->parent);
                                                 newNoteEnt->value = noteType;
                                                 newNoteEnt->e->shading = noteShades[noteType];
 
                                                 addToUndoBufferIndex(&gameState->undoBuffer, CREATE_ENTITY, newNoteEnt->e);
-
-                                                newEnt->sequence[newEnt->noteValueCount++] = newNoteEnt;
+                                                ChordInfo *chordInfo = newEnt->sequence + newEnt->noteValueCount++;
+                                                int indexAt = chordInfo->count++;
+                                                chordInfo->notes_[indexAt] = newNoteEnt;
+                                                chordInfo->values_[indexAt] = newNoteEnt->value;
                                                 
                                             }
                                             at++;
@@ -1993,10 +2076,8 @@ int main(int argc, char *args[]) {
 #if IMGUI_ON
             if(debugUI_isOn) {
                 //THIS IS THE PARTICLE SYSTEM TYPE
-                if(interacting.e->entType == ENTITY_TYPE_PARTICLE_SYSTEM) {
+                if(interacting.e->particleSystem) { // == ENTITY_TYPE_PARTICLE_SYSTEM
                     ImGui::Begin("Particle System Panel");
-
-                    
 
                     particle_system *partSys = interacting.e->particleSystem;
                     particle_system_settings *set = &interacting.e->particleSystem->Set;
@@ -2004,11 +2085,19 @@ int main(int argc, char *args[]) {
                     //ImGui::InputFloat("Life Span", &set->LifeSpan);
                     ImGui::InputFloat("Life Span Of System", &set->MaxLifeSpan);
                     ImGui::Checkbox("Loop", &set->Loop);
+                    ImGui::Checkbox("Pressure Affected", &set->pressureAffected);
                     ImGui::Checkbox("Collides with Floor", &set->collidesWithFloor);
+                    ImGui::InputInt("max particle count", (int *)&partSys->MaxParticleCount);            
+
+                    ImGui::SliderFloat("Bitmap Scale", &set->bitmapScale, 0.2f, 10);            
+                    ImGui::InputFloat2("angle start", set->angleBias.E);            
+                    ImGui::InputFloat2("angle velocity", set->angleForce.E);            
 
                     float lifeSpan_denominator = 1.0f / partSys->creationTimer.period;
                     ImGui::InputFloat("Particle Life Span", &lifeSpan_denominator);
                     partSys->creationTimer.period = 1.0f  / lifeSpan_denominator;
+
+                    ImGui::InputFloat3("Position", set->offsetP.E);            
 
                     static int particleBitmapAt = 1;
                     ImGui::ListBox("textures\n", &particleBitmapAt, texNames, texCount, 4);
@@ -2579,12 +2668,28 @@ int main(int argc, char *args[]) {
             drawRenderGroup(&globalRenderGroup);
 
 //Just blit the texture instead of blending with shader. 
+            float screenRatio =  screenDim.x / bufferWidth;
+            float h1 = bufferHeight * screenRatio;
+            if(h1 > screenDim.y) {
+                screenRatio =  screenDim.y / bufferHeight;
+                float w1 = bufferWidth * screenRatio;
+                assert(w1 <= screenDim.x);
+            }
+
+            float screenX = screenRatio*bufferWidth;
+            float screenY = screenRatio*bufferHeight;
+            assert(screenX <= screenDim.x);
+            assert(screenY <= screenDim.y);
+
+            float wResidue = (screenDim.x - screenX) / 2.0f;
+            float yResidue = (screenDim.y - screenY) / 2.0f;
+
             glViewport(0, 0, screenDim.x, screenDim.y);
             glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
             glCheckError();
             glBindFramebuffer(GL_READ_FRAMEBUFFER, finalCompositedBuffer.bufferId); 
             glCheckError();
-            glBlitFramebuffer(0, 0, bufferWidth, bufferHeight, 0, 0, screenDim.x, screenDim.y, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+            glBlitFramebuffer(0, 0, bufferWidth, bufferHeight, wResidue, yResidue, screenDim.x - wResidue, screenDim.y - yResidue, GL_COLOR_BUFFER_BIT, GL_LINEAR);
             glCheckError();                    
             glViewport(0, 0, bufferWidth, bufferHeight);
             

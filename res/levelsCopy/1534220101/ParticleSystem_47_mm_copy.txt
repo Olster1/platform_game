@@ -1,0 +1,33 @@
+ParticleSystemEntity: {
+
+}
+Commons: {
+	id: 47;
+	name: "(null)";
+	flags: 145;
+	type: "ENT_TYPE_NULL";
+	position: -1.449400 9.266790 -2.000000;
+	velocity: 0.000000 0.000000 0.000000;
+	renderPosOffset: 0.000000 0.000000 0.000000;
+	dim: 1.000000 1.000000 1.000000;
+	renderScale: 1.000000 1.000000 1.000000;
+	shading: 1.000000 1.000000 1.000000 1.000000;
+	inverseWeight: 1.000000;
+	angle: 0.000000;
+
+}
+ParticleSystem: {
+	MaxLifeSpan: 3.000000;
+	loop: true;
+	offsetP: 0.000000 0.000000 0.000000;
+	particleLifeSpan: 5.000000;
+	bitmapScale: 3.245000;
+	bitmapCount: 6;
+	bitmapName: ["cloud1.png", "cloud2.png", "cloud3.png", "cloud5.png", "cloud6.png", "cloud4.png"];
+	posBias: [-10.000000, 0.000000, 10.000000, 10.000000];
+	velBias: [-2.000000, 0.000000, 2.000000, 0.000000];
+	collidesWithFloor: false;
+	pressureAffected: true;
+	active: true;
+
+}

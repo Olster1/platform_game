@@ -92,14 +92,17 @@ char *getStringFromTweakData(Tweaker *tweaker, char *name) {
 
     return result;
 }
+#define getIntFromTweakData(tweaker, name) (int)getIntFromTweakData_(tweaker, name)
+#define getULongFromTweakData(tweaker, name) getIntFromTweakData_(tweaker, name)
+#define getLongFromTweakData(tweaker, name) (long)getIntFromTweakData_(tweaker, name)
 
-int getIntFromTweakData(Tweaker *tweaker, char *name) {
+unsigned long getIntFromTweakData_(Tweaker *tweaker, char *name) {
     TweakVar *var = findTweakVar(tweaker, name);
     assert(var);
 	DataObject *objs = (DataObject *)var->data.memory;
     assert(objs[0].type == VAR_INT);
     
-    int result = objs[0].intVal;
+    unsigned long result = objs[0].intVal;
 
     return result;
 }

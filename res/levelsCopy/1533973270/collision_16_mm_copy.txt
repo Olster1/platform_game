@@ -1,0 +1,26 @@
+Collision: {
+
+}
+Commons: {
+	id: 16;
+	name: "(null)";
+	flags: 189;
+	type: "ENT_TYPE_WORLD_COLLISION";
+	position: 9.899724 4.880212 -1.000000;
+	velocity: 0.000000 0.000000 0.000000;
+	renderPosOffset: 0.000000 0.000000 0.000000;
+	dim: 3.000000 1.000000 1.000000;
+	renderScale: 1.000000 1.000000 1.000000;
+	shading: 1.000000 1.000000 1.000000 1.000000;
+	texture: "scrollTexture2.jpg";
+	inverseWeight: 0.000000;
+	angle: 1.279000;
+	MaxLifeSpan: 3.000000;
+	loop: false;
+	bitmapCount: 0;
+	posBias: [0.000000, 0.000000, 0.000000, 0.000000];
+	velBias: [0.000000, 0.000000, 0.000000, 0.000000];
+	collidesWithFloor: false;
+	active: false;
+
+}

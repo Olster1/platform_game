@@ -1,0 +1,30 @@
+Note: {
+	sound: "d_note.wav";
+	noteValue: "D_NOTE";
+	parentID: 20;
+	isPlayedByParent: false;
+
+}
+Commons: {
+	id: 24;
+	name: "(null)";
+	flags: 177;
+	type: "ENT_TYPE_DEFAULT";
+	position: 6.710651 2.365021 -1.000000;
+	velocity: 0.000000 0.000000 0.000000;
+	renderPosOffset: 0.000000 -0.086777 0.000000;
+	dim: 1.000000 1.000000 1.000000;
+	renderScale: 1.000000 1.000000 1.000000;
+	shading: 0.000000 1.000000 0.000000 1.000000;
+	texture: "MusicalNote.png";
+	inverseWeight: 0.000000;
+	angle: 0.000000;
+	MaxLifeSpan: 3.000000;
+	loop: false;
+	bitmapCount: 0;
+	posBias: [0.000000, 0.000000, 0.000000, 0.000000];
+	velBias: [0.000000, 0.000000, 0.000000, 0.000000];
+	collidesWithFloor: false;
+	active: false;
+
+}

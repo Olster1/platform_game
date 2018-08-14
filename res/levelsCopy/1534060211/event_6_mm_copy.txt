@@ -1,0 +1,10 @@
+Event: {
+	ID: 6;
+	type: "EVENT_LOAD_LEVEL";
+	name: "Load Second Level";
+	entId: 0;
+	dim: 0.000000 0.000000 0.000000;
+	flags: 0;
+	levelToLoad: "level2";
+
+}

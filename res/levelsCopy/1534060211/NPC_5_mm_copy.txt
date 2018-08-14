@@ -1,0 +1,20 @@
+NPC: {
+	eventID: 0;
+
+}
+Commons: {
+	id: 5;
+	name: "(null)";
+	flags: 81;
+	type: "ENT_TYPE_DEFAULT";
+	position: -10.280082 2.257247 -1.000000;
+	velocity: 0.000000 0.000000 0.000000;
+	renderPosOffset: 0.000000 0.000000 0.000000;
+	dim: 1.000000 1.000000 1.000000;
+	renderScale: 1.000000 1.000000 1.000000;
+	shading: 1.000000 1.000000 1.000000 1.000000;
+	texture: "sign.png";
+	inverseWeight: 1.000000;
+	angle: 0.000000;
+
+}

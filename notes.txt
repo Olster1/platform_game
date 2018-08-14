@@ -6,12 +6,13 @@
 [] Have time based note puzzles -> have a line moving across the note helper 
 [] Have air to lift blocks up 
 
+[] Fix event hover bug enter key image is offset because of rendering before camera i think. 
+
 1. Have _chord_ puzzles. 
 2. Have the order be none descriptive -> just the sound to get it correct. 
 3. Have puzzles play at the same time so you have to set the timer on the different note parents. 
 4. Have Notes be able to trigger other note parents. 
 5. Have the note light up then fade away if it isn;t in order
-6. click on notes to hear them
 7. Have notes appear once you listen to the ariginal sequence. 
 8. Do invisble collision boxes for platforms
 9. Have overworld type game like the swapper. 

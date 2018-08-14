@@ -1,0 +1,31 @@
+Entity: {
+
+}
+Commons: {
+	id: 36;
+	name: "(null)";
+	flags: 177;
+	type: "ENT_TYPE_DEFAULT";
+	position: -2.508623 5.683503 -3.000000;
+	velocity: 0.000000 0.000000 0.000000;
+	renderPosOffset: 0.000000 0.000000 0.000000;
+	dim: 1.000000 1.000000 1.000000;
+	renderScale: 8.000000 12.000000 1.000000;
+	shading: 0.758911 0.607843 1.000000 1.000000;
+	texture: "flora1.png";
+	inverseWeight: 0.000000;
+	angle: -0.521000;
+
+}
+ParticleSystem: {
+	MaxLifeSpan: 3.000000;
+	loop: false;
+	offsetP: 0.000000 0.000000 0.000000;
+	particleLifeSpan: 119.999992;
+	bitmapCount: 0;
+	posBias: [0.000000, 0.000000, 0.000000, 0.000000];
+	velBias: [0.000000, 0.000000, 0.000000, 0.000000];
+	collidesWithFloor: false;
+	active: false;
+
+}

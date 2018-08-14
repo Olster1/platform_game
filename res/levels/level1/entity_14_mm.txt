@@ -6,7 +6,7 @@ Commons: {
 	name: "(null)";
 	flags: 249;
 	type: "ENT_TYPE_DEFAULT";
-	position: 0.859300 2.189891 -1.000000;
+	position: 0.859349 2.189891 -1.000000;
 	velocity: -0.000000 0.404040 0.000000;
 	renderPosOffset: 0.000000 0.000000 0.000000;
 	dim: 1.000000 1.000000 1.000000;
@@ -15,5 +15,22 @@ Commons: {
 	texture: "crate.jpg";
 	inverseWeight: 1.000000;
 	angle: 0.000000;
+
+}
+ParticleSystem: {
+	MaxLifeSpan: 3.000000;
+	loop: false;
+	offsetP: 0.000000 0.000000 0.000000;
+	particleLifeSpan: 119.999992;
+	bitmapScale: 0.800000;
+	bitmapCount: 0;
+	posBias: [0.000000, 0.000000, 0.000000, 0.000000];
+	velBias: [0.000000, 0.000000, 0.000000, 0.000000];
+	angleBias: [0.000000, 0.000000];
+	angleForce: [0.000000, 0.000000];
+	maxParticleCount: 32;
+	collidesWithFloor: false;
+	pressureAffected: true;
+	active: false;
 
 }

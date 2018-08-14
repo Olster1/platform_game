@@ -303,6 +303,18 @@ bool platformCreateDirectory(char *fileName) {
 
 }
 
+bool platformDoesDirectoryExist(char *fileName) {
+    bool result = false;
+    DIR* dir = opendir(fileName);
+    if(dir) {
+        result = true;
+        closedir(dir);
+    }
+    return result;
+}
+
+
+
 typedef enum {
     DIR_FIND_FILE_TYPE,
     DIR_DELETE_FILE_TYPE,

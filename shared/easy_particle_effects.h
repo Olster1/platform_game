@@ -20,6 +20,9 @@ struct particle
     V4 Color;
     float lifeAt;
 
+    float dA;
+    float angle;
+
     Texture *bitmap;
 
     GLBufferHandles renderHandle;
@@ -42,8 +45,17 @@ struct particle_system_settings {
     Rect2f VelBias;
     Rect2f posBias;
 
+    V2 angleBias;
+    V2 angleForce;
+
     ParticleSystemType type;
     bool collidesWithFloor;
+
+    V3 offsetP;
+
+    float bitmapScale;
+
+    bool pressureAffected;
 
 };
 
@@ -55,7 +67,7 @@ struct particle_system {
     unsigned int NextParticle;
     unsigned int MaxParticleCount;
     int particleCount;
-
+    
     particle Particles[DEFAULT_MAX_PARTICLE_COUNT];
     particle_system_settings Set;
     
@@ -85,7 +97,9 @@ inline void removeParticleBitmap(particle_system_settings *Settings, int index) 
 internal inline particle_system_settings InitParticlesSettings(ParticleSystemType type) {
     particle_system_settings Set = {};
     Set.MaxLifeSpan = Set.LifeSpan = 3.0f;
+    Set.bitmapScale = 0.8f;
     Set.type = type;
+    Set.pressureAffected = true;
     return Set;
 }
 
@@ -147,6 +161,9 @@ internal inline void drawAndUpdateParticleSystem(particle_system *System, float 
                                   0);
                 Particle->ddP = Acceleration;
                 Particle->lifeAt = 0;
+
+                Particle->angle = randomBetween(System->Set.angleBias.x, System->Set.angleBias.y);
+                Particle->dA = randomBetween(System->Set.angleForce.x, System->Set.angleForce.y);
 
                 Particle->bitmap = 0;
                 if(Set->BitmapCount > 0) {
@@ -245,6 +262,7 @@ internal inline void drawAndUpdateParticleSystem(particle_system *System, float 
             }
         }
 #endif
+        V3 ddP = {};
         for(unsigned int ParticleIndex = 0;
             ParticleIndex < System->particleCount;
             ++ParticleIndex)
@@ -253,38 +271,45 @@ internal inline void drawAndUpdateParticleSystem(particle_system *System, float 
             
             V3 P = v3_scale(Inv_GridScale, Particle->P);
             
-            int CelX = (int)(P.x);
-            int CelY = (int)(P.y);
-            
-            if(CelX >= CEL_GRID_SIZE - 1){ CelX = CEL_GRID_SIZE - 2;}
-            if(CelY >= CEL_GRID_SIZE - 1){ CelY = CEL_GRID_SIZE - 2;}
-            
-            if(CelX < 1){ CelX = 1;}
-            if(CelY < 1){ CelY = 1;}
-            
-            assert(CelX >= 0 && CelX < CEL_GRID_SIZE && CelY >= 0 && CelY < CEL_GRID_SIZE);
+            if(System->Set.pressureAffected) {
+                int CelX = (int)(P.x);
+                int CelY = (int)(P.y);
+                
+                if(CelX >= CEL_GRID_SIZE - 1){ CelX = CEL_GRID_SIZE - 2;}
+                if(CelY >= CEL_GRID_SIZE - 1){ CelY = CEL_GRID_SIZE - 2;}
+                
+                if(CelX < 1){ CelX = 1;}
+                if(CelY < 1){ CelY = 1;}
+                
+                assert(CelX >= 0 && CelX < CEL_GRID_SIZE && CelY >= 0 && CelY < CEL_GRID_SIZE);
 
-            particle_cel *CelCenter = &System->ParticleGrid[CelY][CelX];
-            particle_cel *CelLeft = &System->ParticleGrid[CelY][CelX - 1];
-            particle_cel *CelRight = &System->ParticleGrid[CelY][CelX + 1];
-            particle_cel *CelUp = &System->ParticleGrid[CelY + 1][CelX];
-            particle_cel *CelDown = &System->ParticleGrid[CelY - 1][CelX];
-            
-            
-            V3 VacumDisplacement = Acceleration;//V3(0, 0, 0);
-            float DisplacmentCoeff = 0.6f;
-            if(System->Set.type != PARTICLE_SYS_CIRCULAR) { //don't have vacuum displacement dor circular particle effects
-                VacumDisplacement = v3_plus(VacumDisplacement, v3_scale((CelCenter->Density - CelRight->Density), v3(1, 0, 0)));
-                VacumDisplacement = v3_plus(VacumDisplacement, v3_scale((CelCenter->Density - CelLeft->Density), v3(-1, 0, 0)));
-                VacumDisplacement = v3_plus(VacumDisplacement, v3_scale((CelCenter->Density - CelUp->Density), v3(0, 1, 0)));
-                VacumDisplacement = v3_plus(VacumDisplacement, v3_scale((CelCenter->Density - CelDown->Density), v3(0, -1, 0)));
+                particle_cel *CelCenter = &System->ParticleGrid[CelY][CelX];
+                particle_cel *CelLeft = &System->ParticleGrid[CelY][CelX - 1];
+                particle_cel *CelRight = &System->ParticleGrid[CelY][CelX + 1];
+                particle_cel *CelUp = &System->ParticleGrid[CelY + 1][CelX];
+                particle_cel *CelDown = &System->ParticleGrid[CelY - 1][CelX];
+                
+                
+                V3 VacumDisplacement = Acceleration;//V3(0, 0, 0);
+                float DisplacmentCoeff = 0.6f;
+                if(System->Set.type != PARTICLE_SYS_CIRCULAR) { //don't have vacuum displacement dor circular particle effects
+                    VacumDisplacement = v3_plus(VacumDisplacement, v3_scale((CelCenter->Density - CelRight->Density), v3(1, 0, 0)));
+                    VacumDisplacement = v3_plus(VacumDisplacement, v3_scale((CelCenter->Density - CelLeft->Density), v3(-1, 0, 0)));
+                    VacumDisplacement = v3_plus(VacumDisplacement, v3_scale((CelCenter->Density - CelUp->Density), v3(0, 1, 0)));
+                    VacumDisplacement = v3_plus(VacumDisplacement, v3_scale((CelCenter->Density - CelDown->Density), v3(0, -1, 0)));
+                }
+
+                ddP = v3_plus(Particle->ddP, v3_scale(DisplacmentCoeff, VacumDisplacement));
             }
 
-            V3 ddP = v3_plus(Particle->ddP, v3_scale(DisplacmentCoeff, VacumDisplacement));
+            
             
             //NOTE(oliver): Move particle
             Particle->P = v3_plus(v3_plus(v3_scale(0.5f*sqr(dt), ddP),  v3_scale(dt, Particle->dP)),  Particle->P);
             Particle->dP = v3_plus(v3_scale(dt, ddP), Particle->dP);
+
+            Particle->angle += Particle->dA*dt;
+            //Particle->dA = v3_plus(v3_scale(dt, ddA), Particle->dA);
             
             //NOTE(oliver): Collision with ground
             if(System->Set.collidesWithFloor) {
@@ -313,9 +338,9 @@ internal inline void drawAndUpdateParticleSystem(particle_system *System, float 
             
             
             Particle->lifeAt += dt;
-            RenderInfo renderInfo = calculateRenderInfo(v3_plus(Particle->P, Origin), v3(0.8f, 0.8f, 0), camPos, metresToPixels);
+            RenderInfo renderInfo = calculateRenderInfo(v3_plus(Particle->P, Origin), v3(Set->bitmapScale, Set->bitmapScale, 0), camPos, metresToPixels);
             if(Bitmap) {
-                openGlTextureCentreDim(&Particle->renderHandle, Bitmap->id, renderInfo.pos, renderInfo.dim.xy, Color, 0, mat4(), 1, renderInfo.pvm, projectionMatrixToScreen(bufferWidth, bufferHeight));    
+                openGlTextureCentreDim(&Particle->renderHandle, Bitmap->id, renderInfo.pos, renderInfo.dim.xy, Color, Particle->angle, mat4(), 1, renderInfo.pvm, projectionMatrixToScreen(bufferWidth, bufferHeight));    
             } else {
                 openGlDrawRing(&Particle->renderHandle, renderInfo.pos, renderInfo.dim.xy, Color, mat4(), 1, renderInfo.pvm, projectionMatrixToScreen(bufferWidth, bufferHeight));                
             }

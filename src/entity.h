@@ -145,7 +145,9 @@ typedef struct Note {
 
 	bool isPlayedByParent;
 
-	NoteParent *parent;
+	int parentCount;
+#define NOTE_PARENT_COUNT 4
+	NoteParent *parents[NOTE_PARENT_COUNT];
 } Note;
 
 //TODO: look up flux shaders. 
@@ -166,6 +168,17 @@ typedef enum {
 static char *NoteParentTypeStrings[] = { NOTE_PARENT_TYPE(STRING) };
 static NoteParentType NoteParentTypeValues[] = { NOTE_PARENT_TYPE(ENUM) };
 
+typedef struct {
+#define NOTE_VALUE_SIZE 8
+	int count;
+	NoteValue values_[NOTE_VALUE_SIZE];	
+	//We did have Notes here for the automatic player, but now it will just play a standard note?
+	Note *notes_[NOTE_VALUE_SIZE];	
+	////
+	float timeValue;
+	bool isPlayedByParent[NOTE_VALUE_SIZE];
+} ChordInfo;
+
 #define MAX_NOTE_SEQUENCE_SIZE 16
 typedef struct NoteParent{
 	Entity_Commons *e;
@@ -177,7 +190,7 @@ typedef struct NoteParent{
 	//This is a ring buffer
 	int valueAt;
 	int valueCount;
-	NoteValue values[MAX_NOTE_SEQUENCE_SIZE];
+	ChordInfo values[MAX_NOTE_SEQUENCE_SIZE];
 	//
 
 	bool showChildren;
@@ -187,7 +200,7 @@ typedef struct NoteParent{
 
 	//////SET ON CREATION////
 	int noteValueCount;
-	Note *sequence[MAX_NOTE_SEQUENCE_SIZE]; //don't have more than a 32 note sequence. 
+	ChordInfo sequence[MAX_NOTE_SEQUENCE_SIZE]; //don't have more than a 32 note sequence. 
 	////
 
 	int soundAt; 
@@ -542,7 +555,12 @@ void addValueToNoteParent(NoteParent *parent, NoteValue value) {
 	if(parent->valueAt >= arrayCount(parent->values)) {
 	    parent->valueAt = 0;
 	}
-	parent->values[atIndex] = value;
+	//TODO: There needs to be a timer for a threshold 
+	ChordInfo *info = parent->values + atIndex;
+	if(info->count < arrayCount(info->values_)) {
+		assert(info->count < arrayCount(info->values_));
+		info->values_[info->count++] = value;
+	}
 	parent->valueCount = min(arrayCount(parent->values), ++parent->valueCount);
 	assert(parent->valueCount <= arrayCount(parent->values));
 }

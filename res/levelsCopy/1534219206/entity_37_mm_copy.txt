@@ -1,0 +1,33 @@
+Entity: {
+
+}
+Commons: {
+	id: 37;
+	name: "(null)";
+	flags: 177;
+	type: "ENT_TYPE_DEFAULT";
+	position: 1.899790 3.730047 -1.500000;
+	velocity: 0.000000 0.000000 0.000000;
+	renderPosOffset: 0.000000 0.000000 0.000000;
+	dim: 1.000000 1.000000 1.000000;
+	renderScale: 5.000000 5.000000 1.000000;
+	shading: 0.539216 0.539210 0.539210 1.000000;
+	texture: "tree4.png";
+	inverseWeight: 0.000000;
+	angle: 0.000000;
+
+}
+ParticleSystem: {
+	MaxLifeSpan: 3.000000;
+	loop: false;
+	offsetP: 0.000000 0.000000 -0.300000;
+	particleLifeSpan: 14.999999;
+	bitmapScale: 2.235000;
+	bitmapCount: 0;
+	posBias: [-2.000000, 0.000000, 2.000000, 0.000000];
+	velBias: [-2.000000, -2.000000, 2.000000, 2.000000];
+	collidesWithFloor: false;
+	pressureAffected: true;
+	active: false;
+
+}

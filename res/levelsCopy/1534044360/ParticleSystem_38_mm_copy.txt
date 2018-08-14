@@ -1,0 +1,28 @@
+ParticleSystemEntity: {
+
+}
+Commons: {
+	id: 38;
+	name: "(null)";
+	flags: 145;
+	type: "ENT_TYPE_NULL";
+	position: 4.405211 6.640010 -1.000000;
+	velocity: 0.000000 0.000000 0.000000;
+	renderPosOffset: 0.000000 0.000000 0.000000;
+	dim: 1.000000 1.000000 1.000000;
+	renderScale: 1.000000 1.000000 1.000000;
+	shading: 1.000000 1.000000 1.000000 1.000000;
+	inverseWeight: 1.000000;
+	angle: 0.000000;
+
+}
+ParticleSystem: {
+	MaxLifeSpan: 3.000000;
+	loop: true;
+	bitmapCount: 0;
+	posBias: [0.000000, 0.000000, 0.000000, 0.000000];
+	velBias: [-2.000000, -2.000000, 2.000000, 2.000000];
+	collidesWithFloor: false;
+	active: true;
+
+}

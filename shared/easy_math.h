@@ -416,6 +416,9 @@ bool inBoundsV3(V3 p, Rect3f rect) {
 
 typedef union {
     struct {
+        float E[4];
+    };
+    struct {
         float minX;
         float minY;
         float maxX;

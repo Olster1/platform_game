@@ -1,0 +1,14 @@
+Event: {
+	ID: 2;
+	type: "EVENT_V3_PAN";
+	name: "Move camera to show unblocked passage";
+	entId: 2;
+	dim: 0.000000 0.000000 0.000000;
+	flags: 0;
+	nextEventID: 3;
+	lerpType: "SMOOTH_STEP_01";
+	lerpB: 2.000000 2.000000 0.000000;
+	lerpEntId: 2;
+	lerpTimerPeriod: 3.000000;
+
+}

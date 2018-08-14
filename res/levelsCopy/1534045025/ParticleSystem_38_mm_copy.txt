@@ -1,0 +1,30 @@
+ParticleSystemEntity: {
+
+}
+Commons: {
+	id: 38;
+	name: "(null)";
+	flags: 145;
+	type: "ENT_TYPE_NULL";
+	position: 1.230761 5.629496 -1.000000;
+	velocity: 0.000000 0.000000 0.000000;
+	renderPosOffset: 0.000000 0.000000 0.000000;
+	dim: 1.000000 1.000000 1.000000;
+	renderScale: 1.000000 1.000000 1.000000;
+	shading: 1.000000 1.000000 1.000000 1.000000;
+	inverseWeight: 1.000000;
+	angle: 0.000000;
+
+}
+ParticleSystem: {
+	MaxLifeSpan: 3.000000;
+	loop: true;
+	particleLifeSpan: 10.000000;
+	bitmapCount: 3;
+	bitmapName: ["crate.jpg", "background_sun.png", "enter_key.png"];
+	posBias: [0.000000, 0.000000, 0.000000, 0.000000];
+	velBias: [-2.000000, -2.000000, 2.000000, 2.000000];
+	collidesWithFloor: false;
+	active: true;
+
+}

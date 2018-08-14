@@ -23,8 +23,10 @@ typedef struct {
 } EntFileData;
 
 void beginDataType(InfiniteAlloc *mem, char *name) {
-    char data[16];
-    sprintf(data, "%s: {\n", name);
+    char data[32];
+    char *extraStr = ": {\n";
+    assert(strlen(name) + strlen(extraStr) < arrayCount(data));
+    sprintf(data, "%s%s", name, extraStr);
     addElementInifinteAllocWithCount_(mem, data, strlen(data));
 }
 
@@ -64,7 +66,54 @@ void outputCommonData(InfiniteAlloc *mem, Entity_Commons *ent) {
     if(ent->animationParent) {
         addVar(mem, ent->animationParent->name, "animation", VAR_CHAR_STAR);
     }
+
     endDataType(mem);
+
+
+
+    if(ent->particleSystem) {   
+        beginDataType(mem, "ParticleSystem");
+        particle_system *sys = ent->particleSystem;
+        particle_system_settings *set = &sys->Set;
+        
+        // addVar(mem, &set->LifeSpan, "lifeSpan", VAR_FLOAT); //this is a running var
+        addVar(mem, &set->MaxLifeSpan, "MaxLifeSpan", VAR_FLOAT);
+        addVar(mem, &set->Loop, "loop", VAR_BOOL);
+
+        addVar(mem, &set->offsetP, "offsetP", VAR_V3);
+
+        float val = 1.0f / sys->creationTimer.period;
+        addVar(mem, &val, "particleLifeSpan", VAR_FLOAT);
+
+        addVar(mem, &set->bitmapScale, "bitmapScale", VAR_FLOAT);
+        
+        addVar(mem, &set->BitmapCount, "bitmapCount", VAR_INT);
+        if(set->BitmapCount > 0) {
+            void *bitmapArray = set->BitmapNames;
+            if(set->BitmapCount == 1) {
+                bitmapArray = set->BitmapNames[0];
+            }
+            addVarArray(mem, bitmapArray, set->BitmapCount, "bitmapName", VAR_CHAR_STAR);
+        }
+        
+        // unsigned int BitmapIndex;
+        addVarArray(mem, set->posBias.E, 4, "posBias", VAR_FLOAT);
+        addVarArray(mem, set->VelBias.E, 4, "velBias", VAR_FLOAT);
+
+        addVarArray(mem, set->angleBias.E, 2, "angleBias", VAR_FLOAT);
+        addVarArray(mem, set->angleForce.E, 2, "angleForce", VAR_FLOAT);
+
+        // set->ParticleSystemType type;
+
+        addVar(mem, &sys->MaxParticleCount, "maxParticleCount", VAR_INT);
+
+        addVar(mem, &set->collidesWithFloor, "collidesWithFloor", VAR_BOOL);
+        addVar(mem, &set->pressureAffected, "pressureAffected", VAR_BOOL);
+
+        addVar(mem, &sys->Active, "active", VAR_BOOL);
+        endDataType(mem);
+    }
+    
 }
 
 char *getEntName(char *prepend, int ID) {
@@ -98,7 +147,17 @@ void endEntFileData(EntFileData *data) {
 
 void saveWorld(GameState *gameState, char *dir, char *fileName) {
     
-    // initArray(&gameState->particleSystems, particle_system);
+    for(int entIndex = 0; entIndex < gameState->commons.count; entIndex++) {
+        Entity_Commons *ent = (Entity_Commons *)getElement(&gameState->commons, entIndex);
+        if(ent && isFlagSet(ent, ENTITY_VALID) && !isFlagSet(ent, ENTITY_CAMERA) && ent->entType == ENTITY_TYPE_PARTICLE_SYSTEM) {
+            EntFileData fileData = beginEntFileData(dir, fileName, "ParticleSystem", ent->ID);
+            beginDataType(&fileData.mem, "ParticleSystemEntity");
+            endDataType(&fileData.mem);
+            outputCommonData(&fileData.mem, ent);
+            endEntFileData(&fileData);    
+        }
+    }
+    
     for(int entIndex = 0; entIndex < gameState->npcEntities.count; entIndex++) {
         NPC *ent = (NPC *)getElement(&gameState->npcEntities, entIndex);
         if(ent && isFlagSet(ent->e, ENTITY_VALID)) {
@@ -140,11 +199,14 @@ void saveWorld(GameState *gameState, char *dir, char *fileName) {
             addVar(&fileData.mem, NoteParentTypeStrings[ent->type], "noteParentType", VAR_CHAR_STAR);
             
             if(ent->noteValueCount > 0) {
-                int noteIds[32] = {};
-                for(int i = 0; i < ent->noteValueCount; ++i) {
-                    noteIds[i] = ent->sequence[i]->e->ID;
+                int noteIds[32][32] = {};
+                for(int j = 0; j < ent->noteValueCount; ++j) {
+                    ChordInfo *chord = ent->sequence + j;
+                    for(int i = 0; i < chord->count; ++i) {
+                        noteIds[j][i] = ent->sequence[j].notes_[i]->e->ID;
+                    }
                 }
-                addVarArray(&fileData.mem, noteIds, ent->noteValueCount, "noteSequenceIds", VAR_INT);
+                addVarArray2(&fileData.mem, noteIds, ent->noteValueCount, "noteSequenceIds", VAR_INT);
             }
             if(ent->eventToTrigger) {
                 addVar(&fileData.mem, &ent->eventToTrigger->ID, "eventID", VAR_INT);
@@ -170,7 +232,22 @@ void saveWorld(GameState *gameState, char *dir, char *fileName) {
                 addVar(&fileData.mem, ent->sound->name, "sound", VAR_CHAR_STAR);
             }
             addVar(&fileData.mem, NoteValueStrings[ent->value], "noteValue", VAR_CHAR_STAR);
-            addVar(&fileData.mem, &ent->parent->e->ID, "parentID", VAR_INT);
+
+            addVar(&fileData.mem, &ent->parentCount, "parentCount", VAR_INT);
+
+            int parentIds[NOTE_PARENT_COUNT] = {};
+            void *arrayIds = parentIds;
+            for(int i = 0; i < ent->parentCount; ++i) {
+                parentIds[i] = ent->parents[i]->e->ID;
+            }
+
+            if(ent->parentCount == 1) {
+                arrayIds = &parentIds[0];
+            }
+            
+            addVarArray(&fileData.mem, arrayIds, ent->parentCount, "parentIDs", VAR_INT);
+
+            
             addVar(&fileData.mem, &ent->isPlayedByParent, "isPlayedByParent", VAR_BOOL);
             
             endDataType(&fileData.mem);
@@ -378,7 +455,10 @@ void loadWorld(GameState *gameState, char *dir) {
         EasyTokenizer tokenizer = lexBeginParsing((char *)contents.memory, true);
 
         EntityData entData = {};
-        entData.commons = (Entity_Commons *)getEmptyElement(&gameState->commons);
+        
+        int lastCommonIndex = addElement_(&gameState->commons, 0, gameState->commons.sizeofType);
+        entData.commons = (Entity_Commons *)getElement(&gameState->commons, lastCommonIndex);
+
         EntType tempType = ENTITY_TYPE_INVALID; //this is to use to see if it is a common type
 
         bool parsing = true;
@@ -442,6 +522,125 @@ void loadWorld(GameState *gameState, char *dir) {
                         entData.type = ENTITY_TYPE_EVENT;
                         entData.event = (Event *)getEmptyElement(&gameState->events);
                         setupEmptyEvent(entData.event);
+                        //Don't need a common for events. 
+                        removeElement_ordered(&gameState->commons, lastCommonIndex);
+                    }
+                    if(stringsMatchNullN("ParticleSystemEntity", token.at, token.size)) {
+                        // entData.type = ENTITY_TYPE_PARTICLE_SYSTEM;
+                        setupEntityCommons(entData.commons, &gameState->particleSystems, 0, ENTITY_TYPE_PARTICLE_SYSTEM);
+                    }
+                    if(stringsMatchNullN("ParticleSystem", token.at, token.size)) {
+                        entData.type = ENTITY_TYPE_PARTICLE_SYSTEM;
+                    }
+
+                    if(entData.type == ENTITY_TYPE_PARTICLE_SYSTEM) {
+                        particle_system *sys = entData.commons->particleSystem;
+                        particle_system_settings *set = &sys->Set;
+
+                        if(stringsMatchNullN("MaxLifeSpan", token.at, token.size)) {
+                            set->MaxLifeSpan = getFloatFromDataObjects(&data, &tokenizer);
+                        }
+                        if(stringsMatchNullN("loop", token.at, token.size)) {
+                            set->Loop = getBoolFromDataObjects(&data, &tokenizer);
+                        }
+
+                        if(stringsMatchNullN("pressureAffected", token.at, token.size)) {
+                            set->pressureAffected = getBoolFromDataObjects(&data, &tokenizer);
+                        }
+
+                        if(stringsMatchNullN("particleLifeSpan", token.at, token.size)) {
+                            sys->creationTimer.period = 1.0f / getFloatFromDataObjects(&data, &tokenizer);
+                            
+                        }
+                        if(stringsMatchNullN("bitmapCount", token.at, token.size)) {
+                            set->BitmapCount = getIntFromDataObjects(&data, &tokenizer);
+                        }
+
+                        if(stringsMatchNullN("bitmapScale", token.at, token.size)) {
+                            set->bitmapScale = getFloatFromDataObjects(&data, &tokenizer);
+                        }                        
+
+                        if(stringsMatchNullN("offsetP", token.at, token.size)) {
+                            set->offsetP = buildV3FromDataObjects(&data, &tokenizer);
+                        }
+
+                        if(stringsMatchNullN("bitmapName", token.at, token.size)) {
+                            data = getDataObjects(&tokenizer);
+                            DataObject *objs = (DataObject *)data.memory;
+                            
+                            assert(set->BitmapCount == data.count || set->BitmapCount == 0);
+                            
+                            for(int bitmapIndex = 0; bitmapIndex < data.count; bitmapIndex++) {
+                                assert(objs[bitmapIndex].type == VAR_CHAR_STAR);    
+                                char *tempStr = objs[bitmapIndex].stringVal;
+                                char *bitmapString = nullTerminate(tempStr, strlen(tempStr));
+                                set->BitmapNames[bitmapIndex] = bitmapString;
+                                Texture *tex = findTextureAsset(bitmapString);
+                                assert(tex);
+                                set->Bitmaps[bitmapIndex] = tex;
+                            }
+                        }
+                        if(stringsMatchNullN("maxParticleCount", token.at, token.size)) {
+                            sys->MaxParticleCount = getIntFromDataObjects(&data, &tokenizer);
+                        }
+                        if(stringsMatchNullN("angleBias", token.at, token.size)) {
+                            data = getDataObjects(&tokenizer);
+                            DataObject *objs = (DataObject *)data.memory;
+                            
+                            assert(data.count == 2);
+                            
+                            for(int i = 0; i < data.count; i++) {
+                                assert(objs[i].type == VAR_FLOAT);    
+                                float val = objs[i].floatVal;
+                                set->angleBias.E[i] = val;
+                            }
+                        }
+                        if(stringsMatchNullN("angleForce", token.at, token.size)) {
+                            data = getDataObjects(&tokenizer);
+                            DataObject *objs = (DataObject *)data.memory;
+                            
+                            assert(data.count == 2);
+                            
+                            for(int i = 0; i < data.count; i++) {
+                                assert(objs[i].type == VAR_FLOAT);    
+                                float val = objs[i].floatVal;
+                                set->angleForce.E[i] = val;
+                            }
+                        }
+
+                        if(stringsMatchNullN("posBias", token.at, token.size)) {
+                            data = getDataObjects(&tokenizer);
+                            DataObject *objs = (DataObject *)data.memory;
+                            
+                            assert(data.count == 4);
+                            
+                            for(int i = 0; i < data.count; i++) {
+                                assert(objs[i].type == VAR_FLOAT);    
+                                float val = objs[i].floatVal;
+                                set->posBias.E[i] = val;
+                            }
+                        }
+
+                        if(stringsMatchNullN("velBias", token.at, token.size)) {
+                            data = getDataObjects(&tokenizer);
+                            DataObject *objs = (DataObject *)data.memory;
+                            
+                            assert(data.count == 4);
+                            
+                            for(int i = 0; i < data.count; i++) {
+                                assert(objs[i].type == VAR_FLOAT);    
+                                float val = objs[i].floatVal;
+                                set->VelBias.E[i] = val;
+                            }
+                        }
+
+                        if(stringsMatchNullN("collidesWithFloor", token.at, token.size)) {
+                            set->collidesWithFloor = getBoolFromDataObjects(&data, &tokenizer);
+                        }
+
+                        if(stringsMatchNullN("active", token.at, token.size)) {
+                            sys->Active = getBoolFromDataObjects(&data, &tokenizer);
+                        }
                     }
 
                     if(entData.type == ENTITY_TYPE_EVENT) {
@@ -584,15 +783,28 @@ void loadWorld(GameState *gameState, char *dir) {
                     /// 
                     //Note data
                     if(entData.type == ENTITY_TYPE_NOTE) {
-                        if(stringsMatchNullN("parentID", token.at, token.size)) {
-                            int parentID = getIntFromDataObjects(&data, &tokenizer);
+                        if(stringsMatchNullN("parentCount", token.at, token.size)) {
+                            int val = getIntFromDataObjects(&data, &tokenizer);
+                            assert(entData.noteParent->noteValueCount == val || entData.noteParent->noteValueCount == 0);
+                            entData.note->parentCount = val;
+                        }
+                        if(stringsMatchNullN("parentIDs", token.at, token.size)) {                            
+                            data = getDataObjects(&tokenizer);
+                            DataObject *objs = (DataObject *)data.memory;
+                            assert(entData.noteParent->noteValueCount == data.count || entData.noteParent->noteValueCount == 0);
                             
-                            assert(patchCount < arrayCount(patches));
-                            PointerToPatch *patch = patches + patchCount++;
-                            patch->type = PATCH_TYPE_ENTITY;
-                            patch->id = parentID;
-                            patch->ptr = (void **)(&entData.note->parent);
-                            //
+                            entData.note->parentCount = data.count;
+                            
+                            for(int parentIndex = 0; parentIndex < data.count; parentIndex++) {
+                                assert(objs[parentIndex].type == VAR_INT);    
+                                int parentID = objs[parentIndex].intVal;    
+
+                                assert(patchCount < arrayCount(patches));
+                                PointerToPatch *patch = patches + patchCount++;
+                                patch->type = PATCH_TYPE_ENTITY;
+                                patch->id = parentID;
+                                patch->ptr = (void **)(&entData.note->parents[parentIndex]);
+                            }
                         }
                         if(stringsMatchNullN("noteValue", token.at, token.size)) {
                             char *name = getStringFromDataObjects(&data, &tokenizer);
@@ -791,6 +1003,9 @@ void loadWorld(GameState *gameState, char *dir) {
                 assert(ent);
                 toSet = &ent->pos;
             } break;
+            default: {
+                assert(!"invalid code path");
+            }
         }
         assert(toSet);
         *patch->ptr = toSet; 

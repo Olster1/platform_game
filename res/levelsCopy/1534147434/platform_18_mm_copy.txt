@@ -1,0 +1,34 @@
+Platform: {
+	centerPoint: 0.000000 0.000000 0.000000;
+	platformType: "PLATFORM_LINEAR_X";
+
+}
+Commons: {
+	id: 18;
+	name: "(null)";
+	flags: 153;
+	type: "ENT_TYPE_PLATFORM";
+	position: 11.467100 3.438475 -1.000000;
+	velocity: -0.833333 0.000000 0.000000;
+	renderPosOffset: 0.000000 0.300000 0.000000;
+	dim: 2.500000 1.000000 1.000000;
+	renderScale: 1.000000 1.000000 1.000000;
+	shading: 1.000000 1.000000 1.000000 1.000000;
+	texture: "moss_block1.bmp";
+	inverseWeight: 1.000000;
+	angle: 0.000000;
+
+}
+ParticleSystem: {
+	MaxLifeSpan: 3.000000;
+	loop: false;
+	offsetP: 0.000000 0.000000 0.000000;
+	particleLifeSpan: 119.999992;
+	bitmapCount: 0;
+	posBias: [0.000000, 0.000000, 0.000000, 0.000000];
+	velBias: [0.000000, 0.000000, 0.000000, 0.000000];
+	collidesWithFloor: false;
+	pressureAffected: true;
+	active: false;
+
+}

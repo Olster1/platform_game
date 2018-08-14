@@ -1,0 +1,14 @@
+Event: {
+	ID: 4;
+	type: "EVENT_DIALOG";
+	name: "Finish tutorial level";
+	entId: 2;
+	dim: 2.000000 2.000000 2.000000;
+	flags: 0;
+	nextEventID: 5;
+	dialogCount: 1;
+	dialog: "You are ready to listen...";
+	dialogTimerPeriod: 2.000000;
+	dialogDisplayValue: 0.300000;
+
+}
