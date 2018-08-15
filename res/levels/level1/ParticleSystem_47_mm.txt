@@ -6,7 +6,7 @@ Commons: {
 	name: "(null)";
 	flags: 145;
 	type: "ENT_TYPE_NULL";
-	position: -3.070884 8.121175 -2.000000;
+	position: -3.028840 8.076370 -2.000000;
 	velocity: 0.000000 0.000000 0.000000;
 	renderPosOffset: 0.000000 0.000000 0.000000;
 	dim: 1.000000 1.000000 1.000000;
@@ -30,7 +30,7 @@ ParticleSystem: {
 	angleForce: [0.000000, 0.000000];
 	maxParticleCount: 4;
 	collidesWithFloor: false;
-	pressureAffected: true;
+	pressureAffected: false;
 	active: true;
 
 }

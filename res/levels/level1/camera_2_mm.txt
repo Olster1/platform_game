@@ -6,8 +6,8 @@ Commons: {
 	name: "camera";
 	flags: 433;
 	type: "ENT_TYPE_NULL";
-	position: -0.793621 4.045558 -0.098221;
-	velocity: -0.000000 0.000000 0.000000;
+	position: -5.333340 3.185187 0.095000;
+	velocity: 0.000000 0.000000 0.000000;
 	renderPosOffset: 0.000000 0.300000 0.000000;
 	dim: 8.000000 1.000000 1.000000;
 	renderScale: 1.000000 1.000000 1.000000;

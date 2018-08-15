@@ -1,7 +1,8 @@
 Note: {
 	sound: "c_note.wav";
 	noteValue: "C_NOTE";
-	parentID: 20;
+	parentCount: 1;
+	parentIDs: 20;
 	isPlayedByParent: false;
 
 }
@@ -12,7 +13,7 @@ Commons: {
 	type: "ENT_TYPE_DEFAULT";
 	position: 10.887694 7.572244 -1.000000;
 	velocity: 0.000000 0.000000 0.000000;
-	renderPosOffset: 0.000000 0.112664 0.000000;
+	renderPosOffset: 0.000000 -0.029808 0.000000;
 	dim: 1.000000 1.000000 1.000000;
 	renderScale: 1.000000 1.000000 1.000000;
 	shading: 1.000000 0.000000 0.000000 1.000000;
@@ -24,11 +25,17 @@ Commons: {
 ParticleSystem: {
 	MaxLifeSpan: 3.000000;
 	loop: false;
+	offsetP: 0.000000 0.000000 0.000000;
 	particleLifeSpan: 119.999992;
+	bitmapScale: 0.800000;
 	bitmapCount: 0;
 	posBias: [0.000000, 0.000000, 0.000000, 0.000000];
 	velBias: [0.000000, 0.000000, 0.000000, 0.000000];
+	angleBias: [0.000000, 0.000000];
+	angleForce: [0.000000, 0.000000];
+	maxParticleCount: 32;
 	collidesWithFloor: false;
+	pressureAffected: true;
 	active: false;
 
 }

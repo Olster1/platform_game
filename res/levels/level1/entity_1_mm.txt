@@ -6,7 +6,7 @@ Commons: {
 	name: "player";
 	flags: 251;
 	type: "ENT_TYPE_DEFAULT";
-	position: -0.143833 2.189891 -1.000000;
+	position: -7.306978 2.189891 -1.000000;
 	velocity: -0.000000 0.404040 0.000000;
 	renderPosOffset: 0.000000 1.000000 0.000000;
 	dim: 1.000000 1.000000 1.000000;

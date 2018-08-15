@@ -192,16 +192,22 @@ NoteParent *getLatestParent(Note *note) {
     return parent;
 }
 
-void playChord(Arena *arena, Note **notes, int noteCount) {
-    for(int noteAt = 0; noteAt < noteCount; ++noteAt) {
-        Asset *soundToPlay = notes[noteAt]->sound;
+void playChord(Arena *arena, ChordInfo *chord) {
+    printf("%d\n", chord->count);
+    for(int noteAt = 0; noteAt < chord->count; ++noteAt) {
+        Asset *soundToPlay = chord->notes_[noteAt]->sound;
         playGameSound(arena, getSoundAsset(soundToPlay), 0, AUDIO_FOREGROUND);
     }
 }
 
+NoteValue getNoteValue(ChordInfo *chord, int noteIndex) {
+    NoteValue result = chord->notes_[noteIndex]->value;
+    return result;
+}
+
 void submitSoundToParent(Note *note, NoteParent **showPuzzleProgress, Timer *showPuzzleProgressTimer, int *bestPuzzleMatchSoFar, LerpV4 *puzzleProgressColorLerp, Event **currentEvent, Asset *solvedPuzzleSound, NoteParent **lastNoteParent) {
     NoteParent *parent = getLatestParent(note);
-    addValueToNoteParent(parent, note->value);
+    addValueToNoteParent(parent, note);
     
     *lastNoteParent = parent;
 
@@ -218,7 +224,7 @@ void submitSoundToParent(Note *note, NoteParent **showPuzzleProgress, Timer *sho
         bool keepLooking = true;
         *bestPuzzleMatchSoFar = 0;
         for(int parIndex = 0; parIndex < parent->noteValueCount && keepLooking; ++parIndex) {
-            ChordInfo parVal = parent->sequence[parIndex];
+            ChordInfo *parVal = parent->sequence + parIndex;
             int testIndex = noteIndex + parIndex;
             //wrap index
             if(testIndex >= parent->valueCount) {
@@ -228,10 +234,10 @@ void submitSoundToParent(Note *note, NoteParent **showPuzzleProgress, Timer *sho
             //
 
             if(testIndex != startIndex || noteIndex == startIndex) { //could overflow past the parent values 
-                ChordInfo val = parent->values[testIndex];
-                bool equalToEachOther = (val.count == parVal.count);
-                for(int valIndex = 0; (valIndex < val.count) && equalToEachOther; ++valIndex) {
-                    equalToEachOther &= (val.values_[valIndex] == parVal.values_[valIndex]);
+                ChordInfo *val = parent->values + testIndex;
+                bool equalToEachOther = (val->count == parVal->count);
+                for(int valIndex = 0; (valIndex < val->count) && equalToEachOther; ++valIndex) {
+                    equalToEachOther &= (getNoteValue(val, valIndex) == getNoteValue(parVal, valIndex));
                 }
                 if(equalToEachOther) {
                     keepLooking = false;
@@ -409,8 +415,8 @@ int main(int argc, char *args[]) {
         //
 
         ////INIT FONTS
-        Font mainFont = initFont(concat(globalExeBasePath,(char *)"Merriweather-Regular.ttf"), 32);
-        Font mainFontLarge = initFont(concat(globalExeBasePath,(char *)"Merriweather-Regular.ttf"), 64);
+        Font mainFont = initFont(concat(globalExeBasePath,(char *)"AmaticSC-Regular.ttf"), 64);
+        Font mainFontLarge = initFont(concat(globalExeBasePath,(char *)"AmaticSC-Regular.ttf"), 128);//Merriweather-Regular.ttf
         ///
         //////////SETUP AUDIO/////
         SDL_AudioSpec audioSpec = {};
@@ -1230,11 +1236,9 @@ int main(int argc, char *args[]) {
                 if(parentNote && parentNote->noteValueCount > 0) {
                     if(wasPressed(gameButtons, BUTTON_SPACE)) {
                         playingParentNote = parentNote; 
-                        playingParentNote->soundAt = 1; //we play the first sound here. 
-                        
                         playingParentNote->soundTimer = initTimer(nextSoundPer);
 
-                        playChord(&arena, playingParentNote->sequence[0].notes_, playingParentNote->sequence[0].count);
+                        playChord(&arena, &playingParentNote->sequence[playingParentNote->soundAt++]); //play first chord
                         
                         setChannelVolume(AUDIO_BACKGROUND, LOW_VOLUME, 0.5f);
                         Reactivate(playingParentNote->e->particleSystem);
@@ -1271,8 +1275,8 @@ int main(int argc, char *args[]) {
                         playingParentNote->e->shading = shadeColorForBlock;
                         setLerpInfoV4_s(&playingParentNote->shadingLerp, COLOR_WHITE, nextSoundPer, &playingParentNote->e->shading);
 
-                        ChordInfo chordInfo = playingParentNote->sequence[playingParentNote->soundAt++];
-                        playChord(&arena, chordInfo.notes_, chordInfo.count);
+                        ChordInfo *chordInfo = playingParentNote->sequence + playingParentNote->soundAt++;
+                        playChord(&arena, chordInfo);
                         //playGameSound(&arena, getSoundAsset(soundToPlay), 0, AUDIO_FOREGROUND);
                         Reactivate(playingParentNote->e->particleSystem);
                     }
@@ -1788,7 +1792,7 @@ int main(int argc, char *args[]) {
                 ChordInfo *thisChord = parent->sequence + noteIndex;
                 xAt += widthPerNote;//only move after each chord
                 for(int noteAt = 0; noteAt < thisChord->count; noteAt++) {
-                    float value = (float)thisChord->values_[noteAt] / (float)NOTE_COUNT;
+                    float value = (float)getNoteValue(thisChord, noteAt) / (float)NOTE_COUNT;
                     float yAt = lerp(yAtMin, value, yAtMax);
 
                     LerpV4 *thisLerp = parent->puzzleShadeLerp + noteIndex;
@@ -1981,7 +1985,6 @@ int main(int argc, char *args[]) {
                                                 ChordInfo *chordInfo = newEnt->sequence + newEnt->noteValueCount++;
                                                 int indexAt = chordInfo->count++;
                                                 chordInfo->notes_[indexAt] = newNoteEnt;
-                                                chordInfo->values_[indexAt] = newNoteEnt->value;
                                                 
                                             }
                                             at++;

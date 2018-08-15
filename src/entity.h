@@ -171,7 +171,6 @@ static NoteParentType NoteParentTypeValues[] = { NOTE_PARENT_TYPE(ENUM) };
 typedef struct {
 #define NOTE_VALUE_SIZE 8
 	int count;
-	NoteValue values_[NOTE_VALUE_SIZE];	
 	//We did have Notes here for the automatic player, but now it will just play a standard note?
 	Note *notes_[NOTE_VALUE_SIZE];	
 	////
@@ -549,7 +548,7 @@ void initNPCEnt(Array_Dynamic *commons_, Array_Dynamic *events, NPC *entity, Arr
 	entity->event = addDialogEvent(events, &evComInfo, v3_scale(2, entity->e->dim), EVENT_EXPLICIT | EVENT_TRIGGER, eventId);
 }
 
-void addValueToNoteParent(NoteParent *parent, NoteValue value) {
+void addValueToNoteParent(NoteParent *parent, Note *note) {
 	assert(parent->valueAt < arrayCount(parent->values) && parent->valueAt >= 0);
 	int atIndex = parent->valueAt++;
 	if(parent->valueAt >= arrayCount(parent->values)) {
@@ -557,9 +556,9 @@ void addValueToNoteParent(NoteParent *parent, NoteValue value) {
 	}
 	//TODO: There needs to be a timer for a threshold 
 	ChordInfo *info = parent->values + atIndex;
-	if(info->count < arrayCount(info->values_)) {
-		assert(info->count < arrayCount(info->values_));
-		info->values_[info->count++] = value;
+	if(info->count < arrayCount(info->notes_)) {
+		assert(info->count < arrayCount(info->notes_));
+		info->notes_[info->count++] = note;
 	}
 	parent->valueCount = min(arrayCount(parent->values), ++parent->valueCount);
 	assert(parent->valueCount <= arrayCount(parent->values));

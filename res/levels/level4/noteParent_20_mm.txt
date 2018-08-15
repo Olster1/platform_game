@@ -3,6 +3,7 @@ NoteParent: {
 	showChildren: false;
 	noteValueCount: 4;
 	noteParentType: "NOTE_PARENT_TIME";
+	notesCountPerChord: [1, 1, 1, 1];
 	noteSequenceIds: [21, 22, 23, 24];
 	eventID: 4;
 
@@ -26,11 +27,17 @@ Commons: {
 ParticleSystem: {
 	MaxLifeSpan: 3.000000;
 	loop: false;
+	offsetP: 0.000000 0.000000 0.000000;
 	particleLifeSpan: 119.999992;
+	bitmapScale: 0.800000;
 	bitmapCount: 0;
 	posBias: [-0.010000, -0.010000, 0.000000, 0.000000];
 	velBias: [-1.000000, -1.000000, 1.000000, 1.000000];
+	angleBias: [0.000000, 0.000000];
+	angleForce: [0.000000, 0.000000];
+	maxParticleCount: 32;
 	collidesWithFloor: false;
+	pressureAffected: true;
 	active: false;
 
 }

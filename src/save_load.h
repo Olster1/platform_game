@@ -199,14 +199,22 @@ void saveWorld(GameState *gameState, char *dir, char *fileName) {
             addVar(&fileData.mem, NoteParentTypeStrings[ent->type], "noteParentType", VAR_CHAR_STAR);
             
             if(ent->noteValueCount > 0) {
-                int noteIds[32][32] = {};
-                for(int j = 0; j < ent->noteValueCount; ++j) {
-                    ChordInfo *chord = ent->sequence + j;
-                    for(int i = 0; i < chord->count; ++i) {
-                        noteIds[j][i] = ent->sequence[j].notes_[i]->e->ID;
+                int counts[32] = {};
+                assert(ent->noteValueCount <= arrayCount(counts));
+                InfiniteAlloc noteIds = initInfinteAlloc(int);
+                for(int chordIndex = 0; chordIndex < ent->noteValueCount; ++chordIndex) {
+                    ChordInfo *chord = ent->sequence + chordIndex;
+                    counts[chordIndex] = chord->count;
+                    for(int noteIndex = 0; noteIndex < chord->count; ++noteIndex) {
+                        Note *thisNote = chord->notes_[noteIndex];
+                        int id = thisNote->e->ID;
+                        addElementInifinteAllocWithCount_(&noteIds, &id, 1);
                     }
                 }
-                addVarArray2(&fileData.mem, noteIds, ent->noteValueCount, "noteSequenceIds", VAR_INT);
+                addVarArray(&fileData.mem, counts, ent->noteValueCount, "notesCountPerChord", VAR_INT);
+                addVarArray(&fileData.mem, noteIds.memory, noteIds.count, "noteSequenceIds", VAR_INT);
+
+                releaseInfiniteAlloc(&noteIds);
             }
             if(ent->eventToTrigger) {
                 addVar(&fileData.mem, &ent->eventToTrigger->ID, "eventID", VAR_INT);
@@ -822,9 +830,12 @@ void loadWorld(GameState *gameState, char *dir) {
                             assert(entData.note->sound);
                         }
                     }
-                    //
+                    //                    
                     //Note parent data
                     if(entData.type == ENTITY_TYPE_NOTE_PARENT) {
+                        char buf[256] = {};
+                        nullTerminateBuffer(buf, token.at, token.size);
+                        printf("%s\n", buf);
                         if(stringsMatchNullN("noteValueCount", token.at, token.size)) {
                             entData.noteParent->noteValueCount = getIntFromDataObjects(&data, &tokenizer);
                         }
@@ -840,21 +851,49 @@ void loadWorld(GameState *gameState, char *dir) {
                         if(stringsMatchNullN("showChildren", token.at, token.size)) {
                             entData.noteParent->showChildren = getBoolFromDataObjects(&data, &tokenizer);
                         }
-                        //add all notes for the sequence
-                        if(stringsMatchNullN("noteSequenceIds", token.at, token.size)) {
+                        if(stringsMatchNullN("notesCountPerChord", token.at, token.size)) {
                             data = getDataObjects(&tokenizer);
                             DataObject *objs = (DataObject *)data.memory;
-                            assert(entData.noteParent->noteValueCount == data.count || entData.noteParent->noteValueCount == 0);
-                            for(int noteIndex = 0; noteIndex < data.count; noteIndex++) {
-                                assert(objs[noteIndex].type == VAR_INT);    
-                                int noteId = objs[noteIndex].intVal;
-
-                                assert(patchCount < arrayCount(patches));
-                                PointerToPatch *patch = patches + patchCount++;
-                                patch->type = PATCH_TYPE_ENTITY;
-                                patch->id = noteId;
-                                patch->ptr = (void **)(&entData.noteParent->sequence[noteIndex]);
+                            for(int chordIndex = 0; chordIndex < data.count; chordIndex++) {
+                                assert(objs[chordIndex].type == VAR_INT);
+                                entData.noteParent->sequence[chordIndex].count = objs[chordIndex].intVal;   
                             }
+                        }
+                        if(stringsMatchNullN("noteSequenceIds", token.at, token.size)) {
+                            //NOTE: this means the variable notesCountPerChord has to be read before-hand. 
+                            //If we had supported [][] we wouldn't have this dependency!
+
+                            data = getDataObjects(&tokenizer);
+                            DataObject *objs = (DataObject *)data.memory;
+                            //TODO: Assert with test that we have read in noteCountPerChord already!
+                            //assert(entData.noteParent->noteValueCount == data.count || entData.noteParent->noteValueCount == 0);
+                            assert(entData.noteParent->noteValueCount != 0 || data.count == 0); //this is an assert that we have read in the noteValueCount
+                            int dataAt = 0;
+
+                            for(int chordIndex = 0; chordIndex < entData.noteParent->noteValueCount; chordIndex++) {
+                                ChordInfo *chord = entData.noteParent->sequence + chordIndex;
+                                int noteCount = chord->count;
+                                assert(noteCount != 0);
+                                if(noteCount == 0) { //this shouldn't be the case, only when the other data ins't there. 
+                                    chord->count = noteCount = 1;
+                                }
+
+                                for(int noteAt = 0; noteAt < noteCount; noteAt++) {
+                                    assert(dataAt < data.count);
+                                    int dataIndex = dataAt++;
+                                    int noteId = objs[dataIndex].intVal;
+
+                                    assert(objs[dataIndex].type == VAR_INT);    
+
+                                    assert(patchCount < arrayCount(patches));
+                                    PointerToPatch *patch = patches + patchCount++;
+                                    patch->type = PATCH_TYPE_ENTITY;
+                                    patch->id = noteId;
+                                    patch->ptr = (void **)(&chord->notes_[noteAt]);
+                                    // printf("NOte Count: %d\n", chord->count);
+                                }
+                            }
+                            assert(data.count == dataAt);
                         }
                         if(stringsMatchNullN("eventID", token.at, token.size)) {
                             int entId = getIntFromDataObjects(&data, &tokenizer);

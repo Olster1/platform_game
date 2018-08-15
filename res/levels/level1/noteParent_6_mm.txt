@@ -1,9 +1,10 @@
 NoteParent: {
-	solved: false;
+	solved: true;
 	showChildren: true;
 	noteValueCount: 2;
 	noteParentType: "NOTE_PARENT_TIME";
-	noteSequenceIds: [7, 8];
+	notesCountPerChord: [2, 1];
+	noteSequenceIds: [7, 23, 8];
 	eventID: 2;
 
 }

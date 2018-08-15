@@ -6,7 +6,7 @@ Commons: {
 	name: "(null)";
 	flags: 249;
 	type: "ENT_TYPE_DEFAULT";
-	position: 0.859349 2.189891 -1.000000;
+	position: -8.333233 2.189891 -1.000000;
 	velocity: -0.000000 0.404040 0.000000;
 	renderPosOffset: 0.000000 0.000000 0.000000;
 	dim: 1.000000 1.000000 1.000000;

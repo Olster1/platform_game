@@ -8,8 +8,8 @@ Commons: {
 	name: "(null)";
 	flags: 153;
 	type: "ENT_TYPE_PLATFORM";
-	position: 12.100424 3.438475 -1.000000;
-	velocity: -0.833333 0.000000 0.000000;
+	position: 119.731567 2.344996 -1.000000;
+	velocity: 0.833333 0.000000 0.000000;
 	renderPosOffset: 0.000000 0.300000 0.000000;
 	dim: 2.500000 1.000000 1.000000;
 	renderScale: 1.000000 1.000000 1.000000;

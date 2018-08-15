@@ -1,0 +1,43 @@
+NoteParent: {
+	solved: false;
+	showChildren: true;
+	noteValueCount: 2;
+	noteParentType: "NOTE_PARENT_TIME";
+	notesCountPerChord: [0, 0];
+	noteSequenceIds: 	noteSequenceIds: ;
+	eventID: 2;
+
+}
+Commons: {
+	id: 6;
+	name: "(null)";
+	flags: 177;
+	type: "ENT_TYPE_DEFAULT";
+	position: -8.105968 2.757795 -1.000000;
+	velocity: 0.000000 0.000000 0.000000;
+	renderPosOffset: 0.000000 0.000000 0.000000;
+	dim: 3.000000 3.000000 1.000000;
+	renderScale: 1.000000 1.000000 4.017924;
+	shading: 1.000000 1.000000 1.000000 1.000000;
+	texture: "phonograh.png";
+	inverseWeight: 0.000000;
+	angle: 0.033000;
+
+}
+ParticleSystem: {
+	MaxLifeSpan: 3.000000;
+	loop: false;
+	offsetP: 0.000000 0.000000 0.000000;
+	particleLifeSpan: 119.999992;
+	bitmapScale: 0.800000;
+	bitmapCount: 0;
+	posBias: [-0.010000, -0.010000, 0.000000, 0.000000];
+	velBias: [-1.000000, -1.000000, 1.000000, 1.000000];
+	angleBias: [0.000000, 0.000000];
+	angleForce: [0.000000, 0.000000];
+	maxParticleCount: 32;
+	collidesWithFloor: false;
+	pressureAffected: true;
+	active: false;
+
+}

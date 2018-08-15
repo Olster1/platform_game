@@ -6,7 +6,7 @@ Commons: {
 	name: "(null)";
 	flags: 189;
 	type: "ENT_TYPE_WORLD_COLLISION";
-	position: 2.426542 2.981338 -1.000000;
+	position: 2.500000 6.000000 -1.000000;
 	velocity: 0.000000 0.000000 0.000000;
 	renderPosOffset: 0.000000 0.000000 0.000000;
 	dim: 3.000000 1.000000 1.000000;
