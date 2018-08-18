@@ -14,7 +14,7 @@ void initWorldDataArrays(GameState *gameState, bool clearArrays) {
     clearAndInitArray(&gameState->events, Event, clearArrays);
     clearAndInitArray(&gameState->lights, Light, clearArrays);
     clearAndInitArray(&gameState->renderCircles, RenderCircle, clearArrays);
-    
+    gameState->backgroundTex = 0;
 }
 
 typedef struct {
@@ -103,12 +103,15 @@ void outputCommonData(InfiniteAlloc *mem, Entity_Commons *ent) {
         addVarArray(mem, set->angleBias.E, 2, "angleBias", VAR_FLOAT);
         addVarArray(mem, set->angleForce.E, 2, "angleForce", VAR_FLOAT);
 
+        addVar(mem, ParticleSystemTypeStrings[set->type], "systemType", VAR_CHAR_STAR);
+
         // set->ParticleSystemType type;
 
         addVar(mem, &sys->MaxParticleCount, "maxParticleCount", VAR_INT);
 
         addVar(mem, &set->collidesWithFloor, "collidesWithFloor", VAR_BOOL);
         addVar(mem, &set->pressureAffected, "pressureAffected", VAR_BOOL);
+        addVar(mem, ProjectionTypeStrings[sys->viewType], "projectionType", VAR_CHAR_STAR);
 
         addVar(mem, &sys->Active, "active", VAR_BOOL);
         endDataType(mem);
@@ -146,7 +149,14 @@ void endEntFileData(EntFileData *data) {
 }
 
 void saveWorld(GameState *gameState, char *dir, char *fileName) {
-    
+    {
+        EntFileData fileData = beginEntFileData(dir, fileName, "BackgroundImage", 0); //just used id 0 since it doesnt have an id and they are just used to be user friendly  
+        beginDataType(&fileData.mem, "BackgroundImage");
+        addVar(&fileData.mem, gameState->backgroundTex->name, "backGroundImageFile", VAR_CHAR_STAR);
+        endDataType(&fileData.mem);
+        endEntFileData(&fileData);    
+    }
+
     for(int entIndex = 0; entIndex < gameState->commons.count; entIndex++) {
         Entity_Commons *ent = (Entity_Commons *)getElement(&gameState->commons, entIndex);
         if(ent && isFlagSet(ent, ENTITY_VALID) && !isFlagSet(ent, ENTITY_CAMERA) && ent->entType == ENTITY_TYPE_PARTICLE_SYSTEM) {
@@ -539,6 +549,18 @@ void loadWorld(GameState *gameState, char *dir) {
                     }
                     if(stringsMatchNullN("ParticleSystem", token.at, token.size)) {
                         entData.type = ENTITY_TYPE_PARTICLE_SYSTEM;
+                        particle_system_settings set = {};
+
+                        InitParticleSystem(entData.commons->particleSystem, &set);
+                    }
+                    if(stringsMatchNullN("BackgroundImage", token.at, token.size)) {
+                        entData.type = ENTITY_TYPE_BACKGROUND_IMAGE;
+                        removeElement_ordered(&gameState->commons, lastCommonIndex);
+                    }
+
+                    if(stringsMatchNullN("backGroundImageFile", token.at, token.size)) {
+                        char *string = getStringFromDataObjects(&data, &tokenizer);
+                        gameState->backgroundTex = findAsset(string);
                     }
 
                     if(entData.type == ENTITY_TYPE_PARTICLE_SYSTEM) {
@@ -556,8 +578,16 @@ void loadWorld(GameState *gameState, char *dir) {
                             set->pressureAffected = getBoolFromDataObjects(&data, &tokenizer);
                         }
 
+                        if(stringsMatchNullN("projectionType", token.at, token.size)) {
+                            char *name = getStringFromDataObjects(&data, &tokenizer);
+                            int typeAsInt = findEnumValue(name, ProjectionTypeStrings, arrayCount(ProjectionTypeStrings));
+                            assert(typeAsInt >= 0);
+                            sys->viewType = (ProjectionType)typeAsInt;
+                        }
+
                         if(stringsMatchNullN("particleLifeSpan", token.at, token.size)) {
                             sys->creationTimer.period = 1.0f / getFloatFromDataObjects(&data, &tokenizer);
+                            //sys->creationTimer.value = sys->creationTimer.period; //create particle traight away
                             
                         }
                         if(stringsMatchNullN("bitmapCount", token.at, token.size)) {
@@ -590,6 +620,12 @@ void loadWorld(GameState *gameState, char *dir) {
                         }
                         if(stringsMatchNullN("maxParticleCount", token.at, token.size)) {
                             sys->MaxParticleCount = getIntFromDataObjects(&data, &tokenizer);
+                        }
+                        if(stringsMatchNullN("systemType", token.at, token.size)) {
+                            char *name = getStringFromDataObjects(&data, &tokenizer);
+                            int typeAsInt = findEnumValue(name, ParticleSystemTypeStrings, arrayCount(ParticleSystemTypeStrings));
+                            assert(typeAsInt >= 0);
+                            set->type = (ParticleSystemType)typeAsInt;
                         }
                         if(stringsMatchNullN("angleBias", token.at, token.size)) {
                             data = getDataObjects(&tokenizer);
@@ -833,9 +869,6 @@ void loadWorld(GameState *gameState, char *dir) {
                     //                    
                     //Note parent data
                     if(entData.type == ENTITY_TYPE_NOTE_PARENT) {
-                        char buf[256] = {};
-                        nullTerminateBuffer(buf, token.at, token.size);
-                        printf("%s\n", buf);
                         if(stringsMatchNullN("noteValueCount", token.at, token.size)) {
                             entData.noteParent->noteValueCount = getIntFromDataObjects(&data, &tokenizer);
                         }

@@ -193,7 +193,6 @@ NoteParent *getLatestParent(Note *note) {
 }
 
 void playChord(Arena *arena, ChordInfo *chord) {
-    printf("%d\n", chord->count);
     for(int noteAt = 0; noteAt < chord->count; ++noteAt) {
         Asset *soundToPlay = chord->notes_[noteAt]->sound;
         playGameSound(arena, getSoundAsset(soundToPlay), 0, AUDIO_FOREGROUND);
@@ -205,7 +204,7 @@ NoteValue getNoteValue(ChordInfo *chord, int noteIndex) {
     return result;
 }
 
-void submitSoundToParent(Note *note, NoteParent **showPuzzleProgress, Timer *showPuzzleProgressTimer, int *bestPuzzleMatchSoFar, LerpV4 *puzzleProgressColorLerp, Event **currentEvent, Asset *solvedPuzzleSound, NoteParent **lastNoteParent) {
+void submitSoundToParent(GameState *gameState, Note *note, NoteParent **showPuzzleProgress, Timer *showPuzzleProgressTimer, int *bestPuzzleMatchSoFar, LerpV4 *puzzleProgressColorLerp, Event **currentEvent, Asset *solvedPuzzleSound, NoteParent **lastNoteParent) {
     NoteParent *parent = getLatestParent(note);
     addValueToNoteParent(parent, note);
     
@@ -215,7 +214,13 @@ void submitSoundToParent(Note *note, NoteParent **showPuzzleProgress, Timer *sho
     *showPuzzleProgress = parent;
     setLerpInfoV4_s(puzzleProgressColorLerp, COLOR_WHITE, 0.5f, &puzzleProgressColorLerp->value);
 
+    /*
     assert(parent->valueCount);
+
+    // int valueAt;
+    // int valueCount;
+    // ChordInfo values[MAX_NOTE_SEQUENCE_SIZE];
+
     bool match = true; //try break the match
     bool stillOptions = (parent->valueCount > 0);
     int startIndex = (parent->valueCount >= arrayCount(parent->values)) ? parent->valueAt : 0;
@@ -252,7 +257,9 @@ void submitSoundToParent(Note *note, NoteParent **showPuzzleProgress, Timer *sho
             }
         }
         assert(parent->valueCount > 0);
-        if(match && keepLooking && parent->noteValueCount > 0) {
+        bool patternWasCorrect = (match && keepLooking && parent->noteValueCount > 0);
+
+        if(patternWasCorrect) {
             //clear out array 
             parent->valueAt = 0;
             parent->valueCount = 0;
@@ -260,7 +267,7 @@ void submitSoundToParent(Note *note, NoteParent **showPuzzleProgress, Timer *sho
             *showPuzzleProgressTimer = initTimer(2.0f);
             //
             playGameSound(&arena, getSoundAsset(solvedPuzzleSound), 0, AUDIO_FOREGROUND);
-            Reactivate(parent->e->particleSystem);
+            pushRenderCircle(&gameState->renderCircles, parent->e->pos, v3(0.0f, 0.0f, 0.0f), v3_scale(3.0f, v3(2.0f, 2.0f, 2.0f)), 3.0f, COLOR_YELLOW, WORLD_RENDER);
             assert(!(*currentEvent));
             if(parent->eventToTrigger && !parent->solved) {
                 //only run the event if the puzzle was solved
@@ -283,6 +290,7 @@ void submitSoundToParent(Note *note, NoteParent **showPuzzleProgress, Timer *sho
         //
         assert(noteIndex != startIndex);
     }
+    */
 
 }
 
@@ -415,8 +423,11 @@ int main(int argc, char *args[]) {
         //
 
         ////INIT FONTS
-        Font mainFont = initFont(concat(globalExeBasePath,(char *)"AmaticSC-Regular.ttf"), 64);
-        Font mainFontLarge = initFont(concat(globalExeBasePath,(char *)"AmaticSC-Regular.ttf"), 128);//Merriweather-Regular.ttf
+        Font mainFont = initFont(concat(globalExeBasePath,(char *)"fonts/Merriweather-Regular.ttf"), 32);
+        Font menuFontLarge = initFont(concat(globalExeBasePath,(char *)"fonts/AmaticSC-Regular.ttf"), 128);//Merriweather-Regular.ttf
+#if DEVELOPER_MODE
+        Font monoSpaceFont = initFont(concat(globalExeBasePath,(char *)"fonts/Roboto-Regular.ttf"), 32);//Merriweather-Regular.ttf
+#endif
         ///
         //////////SETUP AUDIO/////
         SDL_AudioSpec audioSpec = {};
@@ -435,12 +446,12 @@ int main(int argc, char *args[]) {
 
         ///////LOAD SOUNDS//////
         //TODO: Free the strings after we load the wav file;
-        Asset *backgroundSound = loadSoundAsset((concat(globalExeBasePath,(char *)"Cave and Wind.wav")), &audioSpec);
-        Asset *backgroundMusic = loadSoundAsset((concat(globalExeBasePath,(char *)"Chill.wav")), &audioSpec);
-        Asset *backgroundMusic2 = loadSoundAsset((concat(globalExeBasePath,(char *)"Chill Major.wav")), &audioSpec);
-        Asset *backgroundMusic3 = loadSoundAsset((concat(globalExeBasePath,(char *)"c_pad.wav")), &audioSpec);
-        Asset *menuSubmitSound = loadSoundAsset((concat(globalExeBasePath,(char *)"Clank1.wav")), &audioSpec);
-        Asset *menuMoveSound = loadSoundAsset((concat(globalExeBasePath,(char *)"menuSound.wav")), &audioSpec);
+        Asset *backgroundSound = loadSoundAsset((concat(globalExeBasePath,(char *)"sounds/Cave and Wind.wav")), &audioSpec);
+        Asset *backgroundMusic = loadSoundAsset((concat(globalExeBasePath,(char *)"sounds/Chill.wav")), &audioSpec);
+        Asset *backgroundMusic2 = loadSoundAsset((concat(globalExeBasePath,(char *)"sounds/Chill Major.wav")), &audioSpec);
+        Asset *backgroundMusic3 = loadSoundAsset((concat(globalExeBasePath,(char *)"sounds/c_pad.wav")), &audioSpec);
+        Asset *menuSubmitSound = loadSoundAsset((concat(globalExeBasePath,(char *)"sounds/Clank1.wav")), &audioSpec);
+        Asset *menuMoveSound = loadSoundAsset((concat(globalExeBasePath,(char *)"sounds/menuSound.wav")), &audioSpec);
         
         
         PlayingSound *firstSound = playGameSound(&arena, getSoundAsset(backgroundMusic3), 0, AUDIO_BACKGROUND);
@@ -454,11 +465,11 @@ int main(int argc, char *args[]) {
         
         // playGameSound(&arena, &backgroundSound, true);
         
-        Asset *jumpSound = loadSoundAsset((concat(globalExeBasePath,(char *)"Bottle_Cork.wav")), &audioSpec);
+        Asset *jumpSound = loadSoundAsset((concat(globalExeBasePath,(char *)"sounds/Bottle_Cork.wav")), &audioSpec);
 
-        Asset *doorSound = loadSoundAsset((concat(globalExeBasePath,(char *)"Bird_Owl.wav")), &audioSpec);
+        Asset *doorSound = loadSoundAsset((concat(globalExeBasePath,(char *)"sounds/Bird_Owl.wav")), &audioSpec);
 
-        Asset *solvedPuzzleSound = loadSoundAsset((concat(globalExeBasePath,(char *)"ambience_short.wav")), &audioSpec);
+        Asset *solvedPuzzleSound = loadSoundAsset((concat(globalExeBasePath,(char *)"sounds/ambience_short.wav")), &audioSpec);
         //loadSoundAsset(&solvedPuzzleSound, (concat(globalExeBasePath,(char *)"Success2.wav")), &audioSpec);
         
         //NoteBundle
@@ -508,6 +519,8 @@ int main(int argc, char *args[]) {
         Asset *enterKeyTex = findAsset("enter_key.png");
         Asset *crateTex = findAsset("crate.jpg");
         Asset *starTex = findAsset("stars.png");
+        Asset *floralTex = findAsset("floralArrangment.jpg");
+        Asset *textBackGround = findAsset("sprayPaint.png");
 
         //TODO: change this to use an Asset type
         globalFireTex_debug = loadImage(concat(globalExeBasePath, (char *)"img/fire.png"));
@@ -561,14 +574,17 @@ int main(int argc, char *args[]) {
         ImGui_ImplSdlGL3_Init(windowHandle);
         
 #endif
-        FrameBuffer compositedBufferMultiSampled = createFrameBufferMultiSample(bufferWidth, bufferWidth, FRAMEBUFFER_DEPTH | FRAMEBUFFER_STENCIL, 2); 
+        //TODO: This uses 8 multisample buffer. This might not be supported on some computers. Look up the max samples supported.  
+        //FrameBuffer backgroundFrameBuffer = createFrameBuffer(bufferWidth, bufferHeight, FRAMEBUFFER_DEPTH | FRAMEBUFFER_STENCIL); 
+        FrameBuffer compositedBufferMultiSampled = createFrameBufferMultiSample(bufferWidth, bufferWidth, FRAMEBUFFER_DEPTH | FRAMEBUFFER_STENCIL, 8); 
+        FrameBuffer CompositedSceneBuffer = createFrameBuffer(bufferWidth, bufferHeight, FRAMEBUFFER_DEPTH | FRAMEBUFFER_STENCIL); 
         FrameBuffer finalCompositedBuffer = createFrameBuffer(bufferWidth, bufferHeight, FRAMEBUFFER_DEPTH | FRAMEBUFFER_STENCIL); 
+        FrameBuffer shadowFrameBuffer = createFrameBuffer(bufferWidth, bufferHeight, FRAMEBUFFER_DEPTH | FRAMEBUFFER_STENCIL); 
         FrameBuffer lightFrameBuffer = createFrameBuffer(bufferWidth, bufferHeight, FRAMEBUFFER_DEPTH | FRAMEBUFFER_STENCIL); 
         
         V2 middleP = v2(0.5f*bufferWidth, 0.5f*bufferHeight);
         
         float ratio = screenRelativeSize * 60.0f / 1.0f;
-        printf("%f\n", screenRelativeSize);
         Matrix4 metresToPixels = Matrix4_scale(mat4(), v3(ratio, ratio, 1));
 
         unsigned int lastTime = SDL_GetTicks();
@@ -648,7 +664,7 @@ int main(int argc, char *args[]) {
 //
 
         MenuInfo menuInfo = {};
-        menuInfo.font = &mainFontLarge;
+        menuInfo.font = &menuFontLarge;
         menuInfo.windowHandle = windowHandle;
         menuInfo.running = &running;
 #define START_WITH_MENU 0
@@ -694,6 +710,7 @@ int main(int argc, char *args[]) {
                 gravityIsOn = getBoolFromTweakData(&tweaker, "gravityIsOn");
                 followPlayer = getBoolFromTweakData(&tweaker, "followPlayer"); 
                 globalSoundOn = getBoolFromTweakData(&tweaker, "globalSoundOn"); 
+                gameState->camera->pos.z = getFloatFromTweakData(&tweaker, "cameraStartZ"); 
             }   
             
             //Save state of last frame game buttons 
@@ -839,19 +856,34 @@ int main(int argc, char *args[]) {
             //////CLEAR BUFFERS 
             clearBufferAndBind(0, COLOR_BLACK);
             clearBufferAndBind(finalCompositedBuffer.bufferId, COLOR_PINK);
+            clearBufferAndBind(CompositedSceneBuffer.bufferId, COLOR_PINK);
+            //clearBufferAndBind(backgroundFrameBuffer.bufferId, COLOR_PINK);
+            clearBufferAndBind(shadowFrameBuffer.bufferId, COLOR_NULL);
+            
             clearBufferAndBind(lightFrameBuffer.bufferId, COLOR_NULL);
 #define MULTI_SAMPLE 1
 #if MULTI_SAMPLE
             if (MultiSample) {
-                clearBufferAndBind(compositedBufferMultiSampled.bufferId, COLOR_PINK); 
+                clearBufferAndBind(compositedBufferMultiSampled.bufferId, COLOR_NULL); 
             }
 #endif
-            if(drawMenu(gameState, loadProgressDir, &menuInfo, gameButtons, getTextureAsset(skyTex), getSoundAsset(menuSubmitSound), getSoundAsset(menuMoveSound), dt, screenRelativeSize, mouseP)) {
+            if(drawMenu(gameState, loadProgressDir, &menuInfo, gameButtons, getTextureAsset(floralTex), getSoundAsset(menuSubmitSound), getSoundAsset(menuMoveSound), dt, screenRelativeSize, mouseP)) {
 
+            setFrameBufferId(&globalRenderGroup, shadowFrameBuffer.bufferId);
             renderDisableDepthTest(&globalRenderGroup);
             static GLBufferHandles backgroundBufferHandles = {};
-            openGlTextureCentreDim(&backgroundBufferHandles, getTextureAsset(skyTex)->id, v2ToV3(middleP, -1), v2(bufferWidth, bufferHeight), COLOR_WHITE, 0, mat4(), 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1), mat4());
+            Texture *bGTexture = 0;
+            if(gameState->backgroundTex) {
+                bGTexture = getTextureAsset(gameState->backgroundTex);
+                
+            } else {
+                //go to default background image
+                gameState->backgroundTex = skyTex;
+                bGTexture = getTextureAsset(skyTex);
+            }
+            openGlTextureCentreDim(&backgroundBufferHandles, bGTexture->id, v2ToV3(middleP, -1), v2(bufferWidth, bufferHeight), COLOR_WHITE, 0, mat4(), 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1), mat4());
             renderEnableDepthTest(&globalRenderGroup);
+            setFrameBufferId(&globalRenderGroup, compositedBufferMultiSampled.bufferId);
             ///////
             //////INPUT/////
             ///////EDITOR INPUT///////
@@ -952,7 +984,8 @@ int main(int argc, char *args[]) {
                             float dimHeight = 0.3f*bufferHeight;
                             
                             static GLBufferHandles dialogBoundsHandles = {};
-                            openGlDrawRectCenterDim(&dialogBoundsHandles, v3(0.5f*bufferWidth, y + 0.4f*dimHeight, -1), v2(bufferWidth, dimHeight), v4(0.6f, 0.6f, 0.6f, 0.6f), 0, mat4TopLeftToBottomLeft(bufferHeight), 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1));
+                            //openGlDrawRectCenterDim(&dialogBoundsHandles, v3(0.5f*bufferWidth, y + 0.4f*dimHeight, -1), v2(bufferWidth, dimHeight), v4(0.6f, 0.6f, 0.6f, 0.6f), 0, mat4TopLeftToBottomLeft(bufferHeight), 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1));
+                            openGlTextureCentreDim(&dialogBoundsHandles, getTextureAsset(textBackGround)->id, v3(0.5f*bufferWidth, y + 0.15f*dimHeight, -1), v2(bufferWidth, dimHeight), COLOR_WHITE, 0, mat4TopLeftToBottomLeft(bufferHeight), 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1), mat4());
                             outputTextWithLength(&mainFont, x, y, bufferWidth, bufferHeight, text, stringCount, rect2fMinMax(0.2f*bufferWidth, 0, 0.8f*bufferWidth, bufferHeight), COLOR_BLACK, screenRelativeSize, true);
                             
 
@@ -1009,7 +1042,7 @@ int main(int argc, char *args[]) {
                     inputAccel.y = 1;
                 }
                 if(isDown(gameButtons, BUTTON_DOWN)) {
-                    inputAccel.y = -1;
+                    // inputAccel.y = -1;
                 }
                 
                 
@@ -1205,7 +1238,18 @@ int main(int argc, char *args[]) {
                             // don't do anything. 
                         } break;
                         case NOTE_PARENT_TIME: {    
+                            TimerReturnInfo inputTimeInfo = updateTimer(&ent->inputTimer, dt);
+                            if(inputTimeInfo.finished) {
+                                ent->chordAt++;
+                                if(ent->chordAt >= ent->noteValueCount) {
+                                    ent->chordAt = 0;
+                                }
+                            }
+                            if(ent->lookedAt) {
+
+                            }
                             if(!ent->solved && ent->lookedAt) {
+                                
                                 TimerReturnInfo timeInfo = updateTimer(&ent->autoSoundTimer, dt);
                                 if(timeInfo.finished || !ent->autoPlaying) {
                                     ent->autoPlaying = true;
@@ -1216,7 +1260,7 @@ int main(int argc, char *args[]) {
                                     assert(index < ent->noteValueCount && index >= 0);
                                     for(int noteAt = 0; noteAt < ent->sequence[index].count; ++noteAt) {
                                         if(ent->sequence[index].isPlayedByParent[noteAt]) {
-                                            submitSoundToParent(ent->sequence[index].notes_[noteAt], &showPuzzleProgress, &showPuzzleProgressTimer, &bestPuzzleMatchSoFar, &puzzleProgressColorLerp, &currentEvent, solvedPuzzleSound, &lastNoteParent);
+                                            submitSoundToParent(gameState, ent->sequence[index].notes_[noteAt], &showPuzzleProgress, &showPuzzleProgressTimer, &bestPuzzleMatchSoFar, &puzzleProgressColorLerp, &currentEvent, solvedPuzzleSound, &lastNoteParent);
                                         }
                                     }
                                 }
@@ -1239,9 +1283,9 @@ int main(int argc, char *args[]) {
                         playingParentNote->soundTimer = initTimer(nextSoundPer);
 
                         playChord(&arena, &playingParentNote->sequence[playingParentNote->soundAt++]); //play first chord
-                        
+                        printf("%s\n", "hey there");
                         setChannelVolume(AUDIO_BACKGROUND, LOW_VOLUME, 0.5f);
-                        Reactivate(playingParentNote->e->particleSystem);
+                        pushRenderCircle(&gameState->renderCircles, playingParentNote->e->pos, v3(0.0f, 0.0f, 0.0f), v3_scale(3.0f, v3(2.0f, 2.0f, 2.0f)), 3.0f, hexARGBTo01Color(0xFFFFEB58), WORLD_RENDER);
                         playingParentNote->e->shading = shadeColorForBlock;
                         setLerpInfoV4_s(&playingParentNote->shadingLerp, COLOR_WHITE, nextSoundPer, &playingParentNote->e->shading);
                         parentNote->showChildren = true;
@@ -1277,8 +1321,8 @@ int main(int argc, char *args[]) {
 
                         ChordInfo *chordInfo = playingParentNote->sequence + playingParentNote->soundAt++;
                         playChord(&arena, chordInfo);
-                        //playGameSound(&arena, getSoundAsset(soundToPlay), 0, AUDIO_FOREGROUND);
-                        Reactivate(playingParentNote->e->particleSystem);
+                        pushRenderCircle(&gameState->renderCircles, playingParentNote->e->pos, v3(0.0f, 0.0f, 0.0f), v3_scale(3.0f, v3(2.0f, 2.0f, 2.0f)), 3.0f, hexARGBTo01Color(0xFFFFEB58), WORLD_RENDER);
+                        // Reactivate(playingParentNote->e->particleSystem);
                     }
                 }
             } 
@@ -1359,7 +1403,7 @@ int main(int argc, char *args[]) {
 
                 //assert(note->parent);
 
-                submitSoundToParent(note, &showPuzzleProgress, &showPuzzleProgressTimer, &bestPuzzleMatchSoFar, &puzzleProgressColorLerp, &currentEvent, solvedPuzzleSound, &lastNoteParent);
+                submitSoundToParent(gameState, note, &showPuzzleProgress, &showPuzzleProgressTimer, &bestPuzzleMatchSoFar, &puzzleProgressColorLerp, &currentEvent, solvedPuzzleSound, &lastNoteParent);
             }
             gameState->player->lastNote = note;    
 
@@ -1455,18 +1499,21 @@ int main(int argc, char *args[]) {
                                 if(ent->timeSinceLastPoll >= (1.0f/30.0f)) {
                                     //Only store the postition if it's significantly different
                                     ent->timeSinceLastPoll = 0;
-                                    int indexAt = ent->lastGroundedAt++;
+
+                                    if(rayInfo.hitEnt->entType != ENTITY_TYPE_PLATFORM) {
+                                        int indexAt = ent->lastGroundedAt++;
                                     
-                                    ent->lastGroundedCount++;
-                                    if(ent->lastGroundedCount > arrayCount(ent->lastGroundedPos)) {
-                                        ent->lastGroundedCount = arrayCount(ent->lastGroundedPos); //clamping the count
+                                        ent->lastGroundedCount++;
+                                        if(ent->lastGroundedCount > arrayCount(ent->lastGroundedPos)) {
+                                            ent->lastGroundedCount = arrayCount(ent->lastGroundedPos); //clamping the count
+                                        }
+                                        assert(indexAt <= ent->lastGroundedCount);
+                                        if(indexAt == ent->lastGroundedCount) {
+                                            ent->lastGroundedAt = indexAt = 0; //warpping the index
+                                        }
+                                        assert(indexAt >= 0 && indexAt < arrayCount(ent->lastGroundedPos) && indexAt < ent->lastGroundedCount);
+                                        ent->lastGroundedPos[indexAt] = ent->pos;
                                     }
-                                    assert(indexAt <= ent->lastGroundedCount);
-                                    if(indexAt == ent->lastGroundedCount) {
-                                        ent->lastGroundedAt = indexAt = 0; //warpping the index
-                                    }
-                                    assert(indexAt >= 0 && indexAt < arrayCount(ent->lastGroundedPos) && indexAt < ent->lastGroundedCount);
-                                    ent->lastGroundedPos[indexAt] = ent->pos;
                                 } 
                             } else {
                                 ent->timeInAir += dt;
@@ -1623,8 +1670,8 @@ int main(int argc, char *args[]) {
                                         dotV2(v2_scale((inverseWeightA + inverseWeightB), SurfaceNormal), SurfaceNormal));
                                     
                                     isNanErrorf(K);
-                                    V2 CollisionImpulse = v2_scale(-(K * ent1->inverseWeight), SurfaceNormal);
-                                    V2 HitEntityCollisionImpulse = v2_scale((K * ent2->inverseWeight), SurfaceNormal);
+                                    V2 CollisionImpulse = v2_scale(-(K * inverseWeightA), SurfaceNormal);
+                                    V2 HitEntityCollisionImpulse = v2_scale((K * inverseWeightB), SurfaceNormal);
                                     
                                     ent2->dP.xy = v2_plus(ent2->dP.xy, HitEntityCollisionImpulse);
                                     ent1->dP.xy = v2_plus(ent1->dP.xy, CollisionImpulse);
@@ -1786,6 +1833,13 @@ int main(int argc, char *args[]) {
             float widthPerNote = 0.1f*bufferWidth;
             float xAt = 0.5f*(bufferWidth - (widthPerNote*(parent->noteValueCount + 1)));
 
+            if(parent->type == NOTE_PARENT_TIME) {
+                static GLBufferHandles cursorBufferHandles = {};
+                float fractionOfNote = getTimerValue01(&parent->inputTimer);
+                float cursorX = (parent->chordAt + fractionOfNote)*widthPerNote + xAt + (0.5f*widthPerNote); 
+                openGlDrawRectCenterDim(&cursorBufferHandles, v3(cursorX, lerp(yAtMin, 0.5f, yAtMax), -1.0f), v2(10, (yAtMax - yAtMin)), COLOR_WHITE, 0, mat4TopLeftToBottomLeft(bufferHeight), 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1));                
+            }
+
             for(int noteIndex = 0; noteIndex < parent->noteValueCount; ++noteIndex) {
                 assert(noteIndex < MAX_NOTE_SEQUENCE_SIZE);
                 //TODO: take account of minor notes. 
@@ -1838,7 +1892,7 @@ int main(int argc, char *args[]) {
                 updateLerpV3(&ent->dimLerp, dt, SMOOTH_STEP_01);
                 bool isLerpOn = isOn(&ent->dimLerp.timer);
                 
-                V4 ringColor = smoothStep00V4(COLOR_NULL, ent->dimLerp.timer.value, ent->color);
+                V4 ringColor = smoothStep00V4(COLOR_NULL, getTimerValue01(&ent->dimLerp.timer), ent->color);
                 if(ent->type == WORLD_RENDER) {
                     RenderInfo renderInfo = calculateRenderInfo(ent->pos, ent->dimLerp.value, gameState->camera->pos, metresToPixels);
                     openGlDrawRing(&ent->renderHandles, renderInfo.pos, renderInfo.dim.xy, ringColor, mat4(), 1, renderInfo.pvm, projectionMatrixToScreen(bufferWidth, bufferHeight));
@@ -2090,7 +2144,16 @@ int main(int argc, char *args[]) {
                     ImGui::Checkbox("Loop", &set->Loop);
                     ImGui::Checkbox("Pressure Affected", &set->pressureAffected);
                     ImGui::Checkbox("Collides with Floor", &set->collidesWithFloor);
-                    ImGui::InputInt("max particle count", (int *)&partSys->MaxParticleCount);            
+                    ImGui::InputInt("max particle count", (int *)&partSys->MaxParticleCount);     
+
+                    // for(int i = 0; i < arrayCount(ProjectionTypeStrings); ++i) {
+                    //     ImGui::RadioButton(ProjectionTypeStrings[i], (int *)(&partSys->viewType), i);         
+                               
+                    // }
+
+                    for(int i = 0; i < arrayCount(ParticleSystemTypeStrings); ++i) {
+                        ImGui::RadioButton(ParticleSystemTypeStrings[i], (int *)(&partSys->Set.type), i);         
+                    }
 
                     ImGui::SliderFloat("Bitmap Scale", &set->bitmapScale, 0.2f, 10);            
                     ImGui::InputFloat2("angle start", set->angleBias.E);            
@@ -2130,8 +2193,7 @@ int main(int argc, char *args[]) {
                     ImGui::InputFloat2("Min Vel", set->VelBias.min.E);
                     ImGui::InputFloat2("Max Vel", set->VelBias.max.E);
 
-                    bool ReactivateSystem_ = false;
-                    if(ImGui::Checkbox("Reactivate", &ReactivateSystem_)) {
+                    if(ImGui::Button("Reactivate")) {
                         Reactivate(interacting.e->particleSystem);
                     }
                     
@@ -2363,7 +2425,7 @@ int main(int argc, char *args[]) {
 
                 if(isOn(&saveTimerDisplay.timer)) {
                     updateLerpV4(&saveTimerDisplay, dt, SMOOTH_STEP_01);
-                    outputText(&mainFontLarge, 0.4f*bufferWidth, 0.5f*bufferHeight, bufferWidth, bufferHeight, (char *)"SAVED", rect2fMinMax(0.2f*bufferWidth, 0, 0.8f*bufferWidth, bufferHeight), saveColor, 1, true);   
+                    outputText(&menuFontLarge, 0.4f*bufferWidth, 0.5f*bufferHeight, bufferWidth, bufferHeight, (char *)"SAVED", rect2fMinMax(0.2f*bufferWidth, 0, 0.8f*bufferWidth, bufferHeight), saveColor, 1, true);   
                 }
                 /////
                 ImGui::End();
@@ -2584,14 +2646,37 @@ int main(int argc, char *args[]) {
             } //This is if the playmode state is active
             drawRenderGroup(&globalRenderGroup);
 #if MULTI_SAMPLE
+            // glBindFramebuffer(GL_DRAW_FRAMEBUFFER, CompositedSceneBuffer.bufferId);
+            // glBindFramebuffer(GL_READ_FRAMEBUFFER, backgroundFrameBuffer.bufferId); 
+            // glBlitFramebuffer(0, 0, bufferWidth, bufferHeight, 0, 0, bufferWidth, bufferHeight, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+
             if (MultiSample) {
-                glBindFramebuffer(GL_DRAW_FRAMEBUFFER, finalCompositedBuffer.bufferId);
+                glBindFramebuffer(GL_DRAW_FRAMEBUFFER, CompositedSceneBuffer.bufferId);
                 glCheckError();
                 glBindFramebuffer(GL_READ_FRAMEBUFFER, compositedBufferMultiSampled.bufferId); 
                 glCheckError();
                 glBlitFramebuffer(0, 0, bufferWidth, bufferHeight, 0, 0, bufferWidth, bufferHeight, GL_COLOR_BUFFER_BIT, GL_LINEAR);
                 glCheckError();
             }
+            if(menuInfo.gameMode == PLAY_MODE) {
+#define DYNAMIC_SHADOWS 1
+#if DYNAMIC_SHADOWS
+                V4 colors[4] = {COLOR_WHITE, COLOR_WHITE, COLOR_WHITE, COLOR_WHITE};
+                static GLBufferHandles shadowHandle = {};
+
+                setFrameBufferId(&globalRenderGroup, shadowFrameBuffer.bufferId);
+                V2 halfScreenSize = v2_scale(0.5f, resolution);
+                openGlDrawRectCenterDim_(&shadowHandle, v3(halfScreenSize.x, halfScreenSize.y, -1), v2(bufferWidth, bufferHeight), colors, 0, mat4(), CompositedSceneBuffer.textureId, SHAPE_SHADOW, shadowProgram.glProgram, 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1), mat4());
+                drawRenderGroup(&globalRenderGroup);
+
+                setFrameBufferId(&globalRenderGroup, finalCompositedBuffer.bufferId);
+                static GLBufferHandles blitHandle = {};
+                openGlDrawRectCenterDim_(&blitHandle, v3(halfScreenSize.x, halfScreenSize.y, -1), v2(bufferWidth, bufferHeight), colors, 0, mat4(), shadowFrameBuffer.textureId, SHAPE_TEXTURE, textureProgram.glProgram, 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1), mat4());
+                drawRenderGroup(&globalRenderGroup);
+
+#endif
+            }
+
                         ///
 #endif      
             static float lightT = 0;
@@ -2702,7 +2787,7 @@ int main(int argc, char *args[]) {
             //TODO: Do our own wait if Vsync isn't on. 
             //NOTE: This is us choosing the best frame time within the intervals of possible frame rates!!!
             dt = timeInFrameSeconds / 1000;
-            float frameRates[] = {idealFrameTime*1.0f, idealFrameTime*2.0f, idealFrameTime*4.0f};
+            float frameRates[] = {idealFrameTime*1.0f, idealFrameTime*2.0f, idealFrameTime*3.0f, idealFrameTime*4.0f};
             float smallestDiff = 0;
             bool set = false;
             float newRate = idealFrameTime;
@@ -2719,18 +2804,18 @@ int main(int argc, char *args[]) {
                 }
             }
             dt = newRate;
-            assert(dt <= frameRates[2]);
+            // assert(dt <= frameRates[2]);
             /////
 
 
 #if DEVELOPER_MODE
             if(debugUI_isOn) 
             {
-                // char secondsInFrameString[256] = {};
-                // sprintf(secondsInFrameString, "%f\n", 1.0f / timeInFrameSeconds);
-                // globalFontImmediate = true;
-                // outputText(&mainFontLarge, 0.1f*bufferWidth, 0.1f*bufferHeight, bufferWidth, bufferHeight, secondsInFrameString, rect2fMinMax(0.2f*bufferWidth, 0, 0.8f*bufferWidth, bufferHeight), COLOR_GREEN, 1, true);   
-                // globalFontImmediate = false;
+                char secondsInFrameString[256] = {};
+                sprintf(secondsInFrameString, "%f\n", 1.0f / timeInFrameSeconds);
+                globalFontImmediate = true;
+                outputText(&monoSpaceFont, 0.1f*bufferWidth, 0.1f*bufferHeight, bufferWidth, bufferHeight, secondsInFrameString, rect2fMinMax(0.2f*bufferWidth, 0, 0.8f*bufferWidth, bufferHeight), COLOR_BLACK, 1, true);   
+                globalFontImmediate = false;
                 // drawRenderGroup(&globalRenderGroup);
             }
 #endif

@@ -12,7 +12,8 @@ typedef enum {
     ENTITY_TYPE_EVENT,
     ENTITY_TYPE_LIGHT,
     ENTITY_TYPE_CAMERA,
-    ENTITY_TYPE_PARTICLE_SYSTEM
+    ENTITY_TYPE_PARTICLE_SYSTEM,
+    ENTITY_TYPE_BACKGROUND_IMAGE
 } EntType;
 
 //IMPORTANT: The order of these matters. They are used in preferece for the collision detection
@@ -171,9 +172,8 @@ static NoteParentType NoteParentTypeValues[] = { NOTE_PARENT_TYPE(ENUM) };
 typedef struct {
 #define NOTE_VALUE_SIZE 8
 	int count;
-	//We did have Notes here for the automatic player, but now it will just play a standard note?
 	Note *notes_[NOTE_VALUE_SIZE];	
-	////
+
 	float timeValue;
 	bool isPlayedByParent[NOTE_VALUE_SIZE];
 } ChordInfo;
@@ -190,6 +190,8 @@ typedef struct NoteParent{
 	int valueAt;
 	int valueCount;
 	ChordInfo values[MAX_NOTE_SEQUENCE_SIZE];
+	Timer inputTimer;
+	int chordAt; 
 	//
 
 	bool showChildren;
@@ -443,6 +445,7 @@ void setupNoteEnt(Note *entity, Entity_Commons *common, Array_Dynamic *particleS
 	entity->fadeInLerp = initLerpV4();
 	entity->fadeInLerp.value = COLOR_NULL;
 
+
 }
 
 void initNoteEnt(Array_Dynamic *commons_, Note *entity, Array_Dynamic *particleSystemArray, V3 pos, Asset *tex, Asset *sound, int ID) {
@@ -463,6 +466,8 @@ void setupNoteParent(NoteParent *entity, Entity_Commons *common, Array_Dynamic *
 
 	entity->e->particleSystem->Set.VelBias = rect2fMinMax(-1, -1, 1, 1);
 	entity->e->particleSystem->Set.posBias = rect2fMinMax(-0.01, -0.01, 0, 0);
+	entity->inputTimer = initTimer(2.0f);
+	entity->chordAt = 0;
 	
 	entity->e->particleSystem->Set.type = PARTICLE_SYS_CIRCULAR;
 	entity->shadingLerp = initLerpV4();
@@ -549,19 +554,27 @@ void initNPCEnt(Array_Dynamic *commons_, Array_Dynamic *events, NPC *entity, Arr
 }
 
 void addValueToNoteParent(NoteParent *parent, Note *note) {
-	assert(parent->valueAt < arrayCount(parent->values) && parent->valueAt >= 0);
-	int atIndex = parent->valueAt++;
-	if(parent->valueAt >= arrayCount(parent->values)) {
-	    parent->valueAt = 0;
+	if(parent->type == NOTE_PARENT_TIME) {
+		ChordInfo *info = parent->values + parent->chordAt;		
+		if(info->count < arrayCount(info->notes_)) {
+			info->notes_[info->count++] = note;
+		}
 	}
-	//TODO: There needs to be a timer for a threshold 
-	ChordInfo *info = parent->values + atIndex;
-	if(info->count < arrayCount(info->notes_)) {
-		assert(info->count < arrayCount(info->notes_));
-		info->notes_[info->count++] = note;
-	}
-	parent->valueCount = min(arrayCount(parent->values), ++parent->valueCount);
-	assert(parent->valueCount <= arrayCount(parent->values));
+
+	// assert(parent->valueAt < arrayCount(parent->values) && parent->valueAt >= 0);
+
+	// if(parent->valueAt >= arrayCount(parent->values)) {
+	//     parent->valueAt = 0;
+	// }
+	// //TODO: There needs to be a timer for a threshold 
+
+	// ChordInfo *info = parent->values + chordAt;
+	// if(info->count < arrayCount(info->notes_)) {
+	// 	assert(info->count < arrayCount(info->notes_));
+	// 	info->notes_[info->count++] = note;
+	// }
+	// parent->valueCount = min(arrayCount(parent->values), ++parent->valueCount);
+	// assert(parent->valueCount <= arrayCount(parent->values));
 }
 
 #define calculateRenderInfoForEntity(ent, cameraPos, metresToPixels) calculateRenderInfo(v3_plus(ent->pos, ent->renderPosOffset), ent->dim, cameraPos, metresToPixels)

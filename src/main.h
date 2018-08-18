@@ -30,6 +30,8 @@ typedef struct {
 
     Entity *player;
     Entity_Commons *camera;
+
+    Asset *backgroundTex;
     
 } GameState;
 
