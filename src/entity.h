@@ -56,6 +56,7 @@ typedef struct {
 	V3 pos; //position
 	V3 dP; //velocity
 	V3 ddP; //acceleration for things like platforms, NPCs etc. 
+	V3 frameDDP; //acceleration for things like platforms, NPCs etc. 
 	V3 centerPoint; //for platforms, put it here for the interacting elment only holds commons.
 
 	V4 shading;
@@ -174,8 +175,8 @@ typedef struct {
 	int count;
 	Note *notes_[NOTE_VALUE_SIZE];	
 
-	float timeValue;
-	bool isPlayedByParent[NOTE_VALUE_SIZE];
+	float duration;
+
 } ChordInfo;
 
 #define MAX_NOTE_SEQUENCE_SIZE 16
@@ -200,8 +201,8 @@ typedef struct NoteParent{
 	LerpV4 puzzleShadeLerp[MAX_NOTE_SEQUENCE_SIZE];
 
 	//////SET ON CREATION////
-	int noteValueCount;
-	ChordInfo sequence[MAX_NOTE_SEQUENCE_SIZE]; //don't have more than a 32 note sequence. 
+	int chordCount;
+	ChordInfo chords[MAX_NOTE_SEQUENCE_SIZE]; //don't have more than a 32 note sequence. 
 	////
 
 	int soundAt; 
@@ -466,7 +467,7 @@ void setupNoteParent(NoteParent *entity, Entity_Commons *common, Array_Dynamic *
 
 	entity->e->particleSystem->Set.VelBias = rect2fMinMax(-1, -1, 1, 1);
 	entity->e->particleSystem->Set.posBias = rect2fMinMax(-0.01, -0.01, 0, 0);
-	entity->inputTimer = initTimer(2.0f);
+	entity->inputTimer = initTimer(-1.0f); //set up in the code when we go to use it. 
 	entity->chordAt = 0;
 	
 	entity->e->particleSystem->Set.type = PARTICLE_SYS_CIRCULAR;

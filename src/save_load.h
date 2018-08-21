@@ -5,7 +5,6 @@ void initWorldDataArrays(GameState *gameState, bool clearArrays) {
     clearAndInitArray(&gameState->entities, Entity, clearArrays);
     clearAndInitArray(&gameState->collisionEnts, Collision_Object, clearArrays);
     clearAndInitArray(&gameState->doorEnts, Door, clearArrays);
-    clearAndInitArray(&gameState->undoBuffer, UndoInfo, clearArrays);
     clearAndInitArray(&gameState->platformEnts, Entity, clearArrays);
     clearAndInitArray(&gameState->noteEnts, Note, clearArrays);
     clearAndInitArray(&gameState->noteParentEnts, NoteParent, clearArrays);
@@ -205,15 +204,20 @@ void saveWorld(GameState *gameState, char *dir, char *fileName) {
             beginDataType(&fileData.mem, "NoteParent");
             addVar(&fileData.mem, &ent->solved, "solved", VAR_BOOL);
             addVar(&fileData.mem, &ent->showChildren, "showChildren", VAR_BOOL);
-            addVar(&fileData.mem, &ent->noteValueCount, "noteValueCount", VAR_INT);
+            addVar(&fileData.mem, &ent->chordCount, "noteValueCount", VAR_INT);
             addVar(&fileData.mem, NoteParentTypeStrings[ent->type], "noteParentType", VAR_CHAR_STAR);
             
-            if(ent->noteValueCount > 0) {
-                int counts[32] = {};
-                assert(ent->noteValueCount <= arrayCount(counts));
+            if(ent->chordCount > 0) {
+                float durations[MAX_NOTE_SEQUENCE_SIZE] = {}; 
+                int durationAt = 0;
+
+                int counts[MAX_NOTE_SEQUENCE_SIZE] = {};
+                assert(ent->chordCount <= arrayCount(counts));
                 InfiniteAlloc noteIds = initInfinteAlloc(int);
-                for(int chordIndex = 0; chordIndex < ent->noteValueCount; ++chordIndex) {
-                    ChordInfo *chord = ent->sequence + chordIndex;
+                for(int chordIndex = 0; chordIndex < ent->chordCount; ++chordIndex) {
+                    ChordInfo *chord = ent->chords + chordIndex;
+                    durations[durationAt++] = chord->duration;
+                    assert(chordIndex < arrayCount(counts));
                     counts[chordIndex] = chord->count;
                     for(int noteIndex = 0; noteIndex < chord->count; ++noteIndex) {
                         Note *thisNote = chord->notes_[noteIndex];
@@ -221,8 +225,11 @@ void saveWorld(GameState *gameState, char *dir, char *fileName) {
                         addElementInifinteAllocWithCount_(&noteIds, &id, 1);
                     }
                 }
-                addVarArray(&fileData.mem, counts, ent->noteValueCount, "notesCountPerChord", VAR_INT);
+                assert(durationAt == ent->chordCount);
+                addVarArray(&fileData.mem, counts, ent->chordCount, "notesCountPerChord", VAR_INT);
                 addVarArray(&fileData.mem, noteIds.memory, noteIds.count, "noteSequenceIds", VAR_INT);
+
+                addVarArray(&fileData.mem, durations, durationAt, "timeDurations", VAR_FLOAT);
 
                 releaseInfiniteAlloc(&noteIds);
             }
@@ -829,13 +836,13 @@ void loadWorld(GameState *gameState, char *dir) {
                     if(entData.type == ENTITY_TYPE_NOTE) {
                         if(stringsMatchNullN("parentCount", token.at, token.size)) {
                             int val = getIntFromDataObjects(&data, &tokenizer);
-                            assert(entData.noteParent->noteValueCount == val || entData.noteParent->noteValueCount == 0);
+                            assert(entData.noteParent->chordCount == val || entData.noteParent->chordCount == 0);
                             entData.note->parentCount = val;
                         }
                         if(stringsMatchNullN("parentIDs", token.at, token.size)) {                            
                             data = getDataObjects(&tokenizer);
                             DataObject *objs = (DataObject *)data.memory;
-                            assert(entData.noteParent->noteValueCount == data.count || entData.noteParent->noteValueCount == 0);
+                            assert(entData.noteParent->chordCount == data.count || entData.noteParent->chordCount == 0);
                             
                             entData.note->parentCount = data.count;
                             
@@ -870,7 +877,7 @@ void loadWorld(GameState *gameState, char *dir) {
                     //Note parent data
                     if(entData.type == ENTITY_TYPE_NOTE_PARENT) {
                         if(stringsMatchNullN("noteValueCount", token.at, token.size)) {
-                            entData.noteParent->noteValueCount = getIntFromDataObjects(&data, &tokenizer);
+                            entData.noteParent->chordCount = getIntFromDataObjects(&data, &tokenizer);
                         }
                         if(stringsMatchNullN("noteParentType", token.at, token.size)) {
                             char *name = getStringFromDataObjects(&data, &tokenizer);
@@ -889,9 +896,19 @@ void loadWorld(GameState *gameState, char *dir) {
                             DataObject *objs = (DataObject *)data.memory;
                             for(int chordIndex = 0; chordIndex < data.count; chordIndex++) {
                                 assert(objs[chordIndex].type == VAR_INT);
-                                entData.noteParent->sequence[chordIndex].count = objs[chordIndex].intVal;   
+                                entData.noteParent->chords[chordIndex].count = objs[chordIndex].intVal;   
                             }
                         }
+                        if(stringsMatchNullN("timeDurations", token.at, token.size)) {
+                            data = getDataObjects(&tokenizer);
+                            DataObject *objs = (DataObject *)data.memory;
+                            for(int chordIndex = 0; chordIndex < data.count; chordIndex++) {
+                                assert(objs[chordIndex].type == VAR_FLOAT);
+                                entData.noteParent->chords[chordIndex].duration = objs[chordIndex].floatVal;   
+                            }
+
+                        }
+                        
                         if(stringsMatchNullN("noteSequenceIds", token.at, token.size)) {
                             //NOTE: this means the variable notesCountPerChord has to be read before-hand. 
                             //If we had supported [][] we wouldn't have this dependency!
@@ -899,12 +916,12 @@ void loadWorld(GameState *gameState, char *dir) {
                             data = getDataObjects(&tokenizer);
                             DataObject *objs = (DataObject *)data.memory;
                             //TODO: Assert with test that we have read in noteCountPerChord already!
-                            //assert(entData.noteParent->noteValueCount == data.count || entData.noteParent->noteValueCount == 0);
-                            assert(entData.noteParent->noteValueCount != 0 || data.count == 0); //this is an assert that we have read in the noteValueCount
+                            //assert(entData.noteParent->chordCount == data.count || entData.noteParent->chordCount == 0);
+                            assert(entData.noteParent->chordCount != 0 || data.count == 0); //this is an assert that we have read in the noteValueCount
                             int dataAt = 0;
 
-                            for(int chordIndex = 0; chordIndex < entData.noteParent->noteValueCount; chordIndex++) {
-                                ChordInfo *chord = entData.noteParent->sequence + chordIndex;
+                            for(int chordIndex = 0; chordIndex < entData.noteParent->chordCount; chordIndex++) {
+                                ChordInfo *chord = entData.noteParent->chords + chordIndex;
                                 int noteCount = chord->count;
                                 assert(noteCount != 0);
                                 if(noteCount == 0) { //this shouldn't be the case, only when the other data ins't there. 

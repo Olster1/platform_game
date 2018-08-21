@@ -23,36 +23,88 @@ typedef struct {
 	};
 } UndoInfo;
 
-void beginUndoMove(Array_Dynamic *array, Entity_Commons *commons, V3 startPos) {
+typedef struct {
+	UndoInfo infos[4096];
+	int indexAt;
+	int origin;
+	int endAt;
+	
+	bool wrapped;
+} UndoState;
+
+UndoInfo *getUndoElement(UndoState *state) {
+	assert(state->indexAt < arrayCount(state->infos));
+	UndoInfo *info = state->infos + state->indexAt; 
+	return info;
+}
+
+void addNewUndoInfoIncrement(UndoState *state) {
+
+	state->indexAt++;
+
+	if(state->indexAt >= arrayCount(state->infos)) {
+		state->wrapped = true;
+		state->indexAt = 0;		
+	}
+
+	if(state->wrapped) {
+		if(state->indexAt == state->origin) {
+			state->origin = state->indexAt + 1;
+			if(state->origin >= arrayCount(state->infos)) {
+				state->origin = 0;
+			}
+			assert(state->origin > state->indexAt || state->indexAt == (arrayCount(state->infos) - 1));
+		}
+	}
+
+	state->endAt = state->indexAt;
+	assert(state->endAt >= 0 && state->endAt < arrayCount(state->infos));
+}
+
+void undoStateDecrementIndex(UndoState *state) {
+	if(state->indexAt != state->origin) {
+		state->indexAt--;
+
+		if(state->indexAt < 0) {
+			if(state->wrapped) {
+				state->indexAt = arrayCount(state->infos) - 1;
+				assert(state->indexAt >= state->origin);
+			} else {
+				state->indexAt = 0;		
+				assert(state->origin == 0);
+			}
+		}
+	}
+}
+
+void beginUndoMove(UndoState *state, Entity_Commons *commons, V3 startPos) {
 	printf("added begin undo move\n");
-	removeSectionOfElements(array, REMOVE_ORDERED, array->indexAt, array->count);
-	assert(array->indexAt <= array->count);
-	UndoInfo *info = (UndoInfo *)getEmptyElement(array);
+	UndoInfo *info = getUndoElement(state);
 	info->type = MOVE_ENTITY;
 	info->startPos = startPos;
 	info->commons = commons;
-	array->indexAt++;
 }
 
-void endUndoMove(Array_Dynamic *array, V3 pos) {
+void endUndoMove(UndoState *state, V3 pos) {
 	printf("added end undo move\n");
-	UndoInfo *info = (UndoInfo *)getLastElement(array);
+	UndoInfo *info = getUndoElement(state);
 	assert(info->type == MOVE_ENTITY);
 	assert(info->commons);
 	info->endPos = pos;
+	addNewUndoInfoIncrement(state);
 }
 
-void addToUndoBufferIndex(Array_Dynamic *array, ActionType type, Entity_Commons *commons) {
+
+//function for adding generic types to the undo buffer
+void addToUndoBuffer(UndoState *state, ActionType type, Entity_Commons *commons) {
 	printf("added entity to undo buffer\n");
-	removeSectionOfElements(array, REMOVE_ORDERED, array->indexAt, array->count);	
-	assert(array->indexAt <= array->count);
-	UndoInfo *info = (UndoInfo *)getEmptyElement(array);
+	UndoInfo *info = getUndoElement(state);
 	info->type = type;
 	info->commons = commons;
-	array->indexAt++;
+	addNewUndoInfoIncrement(state);
 }
 
-void processUndoRedoElm(GameState *gameState, UndoInfo *info, UndoType type) {
+void processUndoRedoElm(UndoInfo *info, UndoType type) {
 	switch(info->type) {
 		case DELETE_ENTITY: {
 			printf("%s\n", "Delte Entity");
@@ -65,7 +117,6 @@ void processUndoRedoElm(GameState *gameState, UndoInfo *info, UndoType type) {
 		case MOVE_ENTITY: {
 			printf("%s\n", "Move Entity");
 			if(type == REDO) {
-				printf("hey\n");
 				info->commons->pos = info->endPos;
 			} else if(type == UNDO) {
 				info->commons->pos = info->startPos;
@@ -82,4 +133,38 @@ void processUndoRedoElm(GameState *gameState, UndoInfo *info, UndoType type) {
 
 	}
 
+}
+
+void redoForUndoState(UndoState *state) {
+	// assert(state->indexAt <= state->count);
+	
+	if(state->indexAt != state->endAt) {
+	    UndoInfo *info = getUndoElement(state);
+	    assert(info);
+	    processUndoRedoElm(info, REDO);
+
+	    state->indexAt++;
+
+    	if(state->indexAt >= arrayCount(state->infos)) {
+    		state->indexAt = 0;
+    		assert(state->indexAt < state->origin);
+	    }
+	    assert(state->indexAt != state->origin);
+
+	} else {
+	    // printf("Buffer count: %d\n", gameState->undoBuffer.count);
+	    // printf("Buffer at: %d\n", gameState->undoBuffer.indexAt);
+	    printf("Nothing to redo in the buffer\n");
+	}
+}
+
+void undoForUndoState(UndoState *state) {
+	if(state->indexAt != state->origin) {
+	    undoStateDecrementIndex(state);
+	    UndoInfo *info = getUndoElement(state);
+	    assert(info);
+	    processUndoRedoElm(info, UNDO);
+	} else {
+	    printf("Nothing to undo in the buffer\n");
+	}
 }

@@ -23,7 +23,7 @@ typedef struct {
     AnimationParent KnightAnimations;
     AnimationParent ManAnimations;
 
-    Array_Dynamic undoBuffer;
+    UndoState undoBuffer;
 
     int ID;
     int eventID;

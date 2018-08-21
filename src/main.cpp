@@ -80,8 +80,8 @@ static Texture globalFireTex_debug = {};
 #include "event.h"
 #include "assets.h"
 #include "entity.h"
-#include "main.h"
 #include "undo_buffer.h"
+#include "main.h"
 #include "easy_animation.h" //relys on gameState
 #include "save_load.h"
 #include "menu.h"
@@ -371,9 +371,12 @@ int main(int argc, char *args[]) {
             }
         }
         
+
 #if !FIXED_FUNCTION_PIPELINE
         gl3wInit();
 #endif
+        // glViewport(0, 0, bufferWidth, bufferHeight);
+        // clearBufferAndBind(0, COLOR_BLACK);
         
 #if DEVELOPER_MODE //replace the source loaded with the /res file path. 
          //We move back one folder, out of the src file 
@@ -521,6 +524,7 @@ int main(int argc, char *args[]) {
         Asset *starTex = findAsset("stars.png");
         Asset *floralTex = findAsset("floralArrangment.jpg");
         Asset *textBackGround = findAsset("sprayPaint.png");
+        Asset *lightBulbTex = findAsset("lightbulb.png");
 
         //TODO: change this to use an Asset type
         globalFireTex_debug = loadImage(concat(globalExeBasePath, (char *)"img/fire.png"));
@@ -580,6 +584,11 @@ int main(int argc, char *args[]) {
         FrameBuffer CompositedSceneBuffer = createFrameBuffer(bufferWidth, bufferHeight, FRAMEBUFFER_DEPTH | FRAMEBUFFER_STENCIL); 
         FrameBuffer finalCompositedBuffer = createFrameBuffer(bufferWidth, bufferHeight, FRAMEBUFFER_DEPTH | FRAMEBUFFER_STENCIL); 
         FrameBuffer shadowFrameBuffer = createFrameBuffer(bufferWidth, bufferHeight, FRAMEBUFFER_DEPTH | FRAMEBUFFER_STENCIL); 
+        FrameBuffer GUIFrameBuffer = createFrameBuffer(bufferWidth, bufferHeight, FRAMEBUFFER_DEPTH | FRAMEBUFFER_STENCIL); 
+
+        // float shadowScaleFactor = 1.0f;
+        // FrameBuffer smallShadowFrameBuffer = createFrameBuffer(shadowScaleFactor*bufferWidth, shadowScaleFactor*bufferHeight, FRAMEBUFFER_DEPTH | FRAMEBUFFER_STENCIL); 
+        // FrameBuffer smallShadowFrameBuffer2 = createFrameBuffer(shadowScaleFactor*bufferWidth, shadowScaleFactor*bufferHeight, FRAMEBUFFER_DEPTH | FRAMEBUFFER_STENCIL); 
         FrameBuffer lightFrameBuffer = createFrameBuffer(bufferWidth, bufferHeight, FRAMEBUFFER_DEPTH | FRAMEBUFFER_STENCIL); 
         
         V2 middleP = v2(0.5f*bufferWidth, 0.5f*bufferHeight);
@@ -719,6 +728,7 @@ int main(int argc, char *args[]) {
             bool leftArrowWasDown = isDown(gameButtons, BUTTON_LEFT);
             bool rightArrowWasDown = isDown(gameButtons, BUTTON_RIGHT);
             bool shiftWasDown = isDown(gameButtons, BUTTON_SHIFT);
+            bool commandWasDown = isDown(gameButtons, BUTTON_COMMAND);
             bool spaceWasDown = isDown(gameButtons, BUTTON_SPACE);
             /////
             zeroArray(gameButtons);
@@ -779,6 +789,14 @@ int main(int argc, char *args[]) {
                         case SDLK_F1: {
                             buttonType = BUTTON_F1;
                         } break;
+                        case SDLK_LGUI: {
+                            // buttonType = BUTTON_COMMAND;
+
+                        } break;
+                        case SDLK_z: {
+                            buttonType = BUTTON_Z;
+
+                        } break;
                         case SDLK_LSHIFT: {
                             //buttonType = BUTTON_SHIFT;
                         } break;
@@ -818,10 +836,12 @@ int main(int argc, char *args[]) {
             bool leftArrowIsDown = keystates[SDL_SCANCODE_LEFT];
             bool rightArrowIsDown = keystates[SDL_SCANCODE_RIGHT];
             bool shiftIsDown = keystates[SDL_SCANCODE_LSHIFT];
+            bool commandIsDown = keystates[SDL_SCANCODE_LGUI];
             
             sdlProcessGameKey(&gameButtons[BUTTON_LEFT], leftArrowIsDown, leftArrowWasDown == leftArrowIsDown);
             sdlProcessGameKey(&gameButtons[BUTTON_RIGHT], rightArrowIsDown, rightArrowWasDown == rightArrowIsDown);
             sdlProcessGameKey(&gameButtons[BUTTON_SHIFT], shiftIsDown, shiftWasDown == shiftIsDown);
+            sdlProcessGameKey(&gameButtons[BUTTON_COMMAND], commandIsDown, commandWasDown == commandIsDown);
 
             int mouseX, mouseY;
 
@@ -857,8 +877,12 @@ int main(int argc, char *args[]) {
             clearBufferAndBind(0, COLOR_BLACK);
             clearBufferAndBind(finalCompositedBuffer.bufferId, COLOR_PINK);
             clearBufferAndBind(CompositedSceneBuffer.bufferId, COLOR_PINK);
-            //clearBufferAndBind(backgroundFrameBuffer.bufferId, COLOR_PINK);
+            clearBufferAndBind(GUIFrameBuffer.bufferId, COLOR_NULL);
             clearBufferAndBind(shadowFrameBuffer.bufferId, COLOR_NULL);
+            
+            //clearBufferAndBind(backgroundFrameBuffer.bufferId, COLOR_PINK);
+            // clearBufferAndBind(smallShadowFrameBuffer.bufferId, COLOR_NULL);
+            // clearBufferAndBind(smallShadowFrameBuffer2.bufferId, COLOR_NULL);
             
             clearBufferAndBind(lightFrameBuffer.bufferId, COLOR_NULL);
 #define MULTI_SAMPLE 1
@@ -896,10 +920,71 @@ int main(int argc, char *args[]) {
 
             }
 
+
+                        float physTime = (float)dt / (float)idealFrameTime;
+                        float remainder = physTime - ((int)physTime);
+                        int loopCount = (int)ceil(physTime);
+                        assert(remainder >= 0.0f);
+                        assert(physTime >= 0.0f);
+                        assert(loopCount >= 1);
+
+                        ////UPDATE CAMERA///
+                        if(followPlayer && !currentEvent) {
+                            V3 relPos = v3_minus(gameState->player->e->pos, gameState->camera->pos);
+                            V3 followDim = v3(2, 2, 2);
+            #if 1   
+                            float power = 100;
+                            V3 camForce = v3(0, 0, 0);
+                            if(absVal(relPos.x) > followDim.x) {
+                                camForce.x += power*signOf(relPos.x);
+                            }
+                            if(absVal(relPos.y) > followDim.y) {
+                                camForce.y += power*signOf(relPos.y);
+                            }
+                            if(absVal(relPos.z) > followDim.z) {
+                                camForce.z += power*signOf(relPos.z);
+                            }
+
+                            for(int i = 0; i < loopCount; ++i) {
+                                float dtValue = getDtValue(idealFrameTime, i, dt, remainder);
+                                easy_phys_updatePosAndVel(&gameState->camera->pos, &gameState->camera->dP, camForce, dtValue, 0.6f);
+                            }
+            #else
+                            float camDistFromPlayer = getLengthV3(relPos); 
+                            if(camDistFromPlayer > distanceFromLayer) {
+                                V3 targetCamPos = v2ToV3(player->e->pos.xy, player->e->pos.z + distanceFromLayer); // Does this trash the cache?? 
+                                float transitionPeriod = 1;//camDistFromPlayer;//TODO: do we want to make it go faster/slower depending on the distance?
+                                setLerpInfoV3_s(&cameraLerp, targetCamPos, transitionPeriod, &gameState->camera.pos);
+                                }
+
+                            updateLerpV3(&cameraLerp, dt, SMOOTH_STEP_01);
+                            }
+            #endif
+                            
+                        }
+
+            #if DEVELOPER_MODE
+                        if(debugUI_isOn) {
+                            gameState->camera->pos.z += 0.3f*dt*scrollWheelY;
+                        }
+            #endif
             //////
+
+            globalLightInfoCount = 0;
+            //If lights were just a flat array we wouldn't have to do this. 
+            for(int lightIndex = 0; lightIndex < gameState->lights.count; ++lightIndex) {
+                Light *ent = (Light *)getElement(&gameState->lights, lightIndex);
+                if(ent) {
+                    LightInfo *light = globalLightInfos + globalLightInfoCount++;
+                    light->pos = ent->e->pos; 
+                    light->flux = ent->flux; 
+                }
+            }
 
             //Event Interaction
             Event *hotEvent = 0;
+            
+            setFrameBufferId(&globalRenderGroup, GUIFrameBuffer.bufferId);
 
             for(int entIndex = 0; entIndex < gameState->events.count; entIndex++) {
                 Event *ent = (Event *)getElement(&gameState->events, entIndex);
@@ -922,17 +1007,6 @@ int main(int argc, char *args[]) {
                 openGlTextureCentreDim(&eventSignalBufferHandles, getTextureAsset(enterKeyTex)->id, renderInfo.pos, renderInfo.dim.xy, COLOR_WHITE, 0, mat4(), 1, renderInfo.pvm, projectionMatrixToScreen(bufferWidth, bufferHeight));
                 if(!isEventFlagSet(hotEvent, EVENT_EXPLICIT) || wasPressed(gameButtons, BUTTON_SPACE)) {
                     currentEvent = hotEvent;
-                }
-            }
-
-            globalLightInfoCount = 0;
-            //If lights were just a flat array we wouldn't have to do this. 
-            for(int lightIndex = 0; lightIndex < gameState->lights.count; ++lightIndex) {
-                Light *ent = (Light *)getElement(&gameState->lights, lightIndex);
-                if(ent) {
-                    LightInfo *light = globalLightInfos + globalLightInfoCount++;
-                    light->pos = ent->e->pos; 
-                    light->flux = ent->flux; 
                 }
             }
 
@@ -1019,6 +1093,8 @@ int main(int argc, char *args[]) {
                 }
             // } 
 
+            setFrameBufferId(&globalRenderGroup, compositedBufferMultiSampled.bufferId);
+
             float divisor = (dt / idealFrameTime);
             Entity_Commons *pCommon = gameState->player->e;
             if(isDown(gameButtons, BUTTON_SPACE)) {
@@ -1051,53 +1127,7 @@ int main(int argc, char *args[]) {
                 inputAccel.y = (yPower)*inputAccel.y;
             }
 
-            float physTime = (float)dt / (float)idealFrameTime;
-            float remainder = physTime - ((int)physTime);
-            int loopCount = (int)ceil(physTime);
-            assert(remainder >= 0.0f);
-            assert(physTime >= 0.0f);
-            assert(loopCount >= 1);
-
-            ////UPDATE CAMERA///
-            if(followPlayer && !currentEvent) {
-                V3 relPos = v3_minus(gameState->player->e->pos, gameState->camera->pos);
-                V3 followDim = v3(2, 2, 2);
-#if 1   
-                float power = 100;
-                V3 camForce = v3(0, 0, 0);
-                if(absVal(relPos.x) > followDim.x) {
-                    camForce.x += power*signOf(relPos.x);
-                }
-                if(absVal(relPos.y) > followDim.y) {
-                    camForce.y += power*signOf(relPos.y);
-                }
-                if(absVal(relPos.z) > followDim.z) {
-                    camForce.z += power*signOf(relPos.z);
-                }
-
-                for(int i = 0; i < loopCount; ++i) {
-                    float dtValue = getDtValue(idealFrameTime, i, dt, remainder);
-                    easy_phys_updatePosAndVel(&gameState->camera->pos, &gameState->camera->dP, camForce, dtValue, 0.6f);
-                }
-#else
-                float camDistFromPlayer = getLengthV3(relPos); 
-                if(camDistFromPlayer > distanceFromLayer) {
-                    V3 targetCamPos = v2ToV3(player->e->pos.xy, player->e->pos.z + distanceFromLayer); // Does this trash the cache?? 
-                    float transitionPeriod = 1;//camDistFromPlayer;//TODO: do we want to make it go faster/slower depending on the distance?
-                    setLerpInfoV3_s(&cameraLerp, targetCamPos, transitionPeriod, &gameState->camera.pos);
-                    }
-
-                updateLerpV3(&cameraLerp, dt, SMOOTH_STEP_01);
-                }
-#endif
-                
-            }
-
-#if DEVELOPER_MODE
-            if(debugUI_isOn) {
-                gameState->camera->pos.z += 0.3f*dt*scrollWheelY;
-            }
-#endif
+            
 
 
 
@@ -1222,28 +1252,36 @@ int main(int argc, char *args[]) {
 
             ////////////PARENT MUSIC NOTE INTERACTION//////////
 
-            float nextSoundPer = 2.0f;
             NoteParent *parentNote = 0;
             for(int entIndex = 0; entIndex < gameState->noteParentEnts.count; entIndex++) {
                 NoteParent *ent = (NoteParent *)getElement(&gameState->noteParentEnts, entIndex);
-                if(ent && isFlagSet(ent->e, ENTITY_VALID)) {
+                if(ent && isFlagSet(ent->e, ENTITY_VALID) && ent->chordCount > 0) {
                     if(floatEqual_withError(ent->e->pos.z, gameState->player->e->pos.z)) { 
                         Rect2f entBounds = rect2fCenterDimV2(ent->e->pos.xy, ent->e->dim.xy);
                         if(inBounds(gameState->player->e->pos.xy, entBounds, BOUNDS_RECT)) {
                             parentNote = ent;
                         }
                     }
+
                     switch(ent->type) {
                         case NOTE_PARENT_DEFAULT: {
                             // don't do anything. 
                         } break;
                         case NOTE_PARENT_TIME: {    
+                            if(ent->inputTimer.period <= 0) {
+                                //setup the period if it is the first one. Could do this in the save_load file. 
+                                assert(ent->chordAt < ent->chordCount);
+                                assert(ent->chordAt == 0);
+                                ent->inputTimer.period = ent->chords[ent->chordAt].duration;
+                            }
+
                             TimerReturnInfo inputTimeInfo = updateTimer(&ent->inputTimer, dt);
                             if(inputTimeInfo.finished) {
                                 ent->chordAt++;
-                                if(ent->chordAt >= ent->noteValueCount) {
+                                if(ent->chordAt >= ent->chordCount) {
                                     ent->chordAt = 0;
                                 }
+                                ent->inputTimer.period = ent->chords[ent->chordAt].duration;
                             }
                             if(ent->lookedAt) {
 
@@ -1254,13 +1292,13 @@ int main(int argc, char *args[]) {
                                 if(timeInfo.finished || !ent->autoPlaying) {
                                     ent->autoPlaying = true;
                                     int index = ent->autoSoundAt++; 
-                                    if(ent->autoSoundAt >= ent->noteValueCount) {
+                                    if(ent->autoSoundAt >= ent->chordCount) {
                                         ent->autoSoundAt = 0;
                                     }
-                                    assert(index < ent->noteValueCount && index >= 0);
-                                    for(int noteAt = 0; noteAt < ent->sequence[index].count; ++noteAt) {
-                                        if(ent->sequence[index].isPlayedByParent[noteAt]) {
-                                            submitSoundToParent(gameState, ent->sequence[index].notes_[noteAt], &showPuzzleProgress, &showPuzzleProgressTimer, &bestPuzzleMatchSoFar, &puzzleProgressColorLerp, &currentEvent, solvedPuzzleSound, &lastNoteParent);
+                                    assert(index < ent->chordCount && index >= 0);
+                                    for(int noteAt = 0; noteAt < ent->chords[index].count; ++noteAt) {
+                                        if(ent->chords[index].notes_[noteAt]->isPlayedByParent) {
+                                            submitSoundToParent(gameState, ent->chords[index].notes_[noteAt], &showPuzzleProgress, &showPuzzleProgressTimer, &bestPuzzleMatchSoFar, &puzzleProgressColorLerp, &currentEvent, solvedPuzzleSound, &lastNoteParent);
                                         }
                                     }
                                 }
@@ -1277,17 +1315,19 @@ int main(int argc, char *args[]) {
             
             static float theta = 0;
             if(!playingParentNote) { //parent not isn't playing 
-                if(parentNote && parentNote->noteValueCount > 0) {
+                if(parentNote && parentNote->chordCount > 0) {
                     if(wasPressed(gameButtons, BUTTON_SPACE)) {
                         playingParentNote = parentNote; 
-                        playingParentNote->soundTimer = initTimer(nextSoundPer);
 
-                        playChord(&arena, &playingParentNote->sequence[playingParentNote->soundAt++]); //play first chord
-                        printf("%s\n", "hey there");
+                        ChordInfo *chordToPlay = playingParentNote->chords + playingParentNote->soundAt++;
+
+                        playingParentNote->soundTimer = initTimer(chordToPlay->duration);
+
+                        playChord(&arena, chordToPlay); //play first chord
                         setChannelVolume(AUDIO_BACKGROUND, LOW_VOLUME, 0.5f);
                         pushRenderCircle(&gameState->renderCircles, playingParentNote->e->pos, v3(0.0f, 0.0f, 0.0f), v3_scale(3.0f, v3(2.0f, 2.0f, 2.0f)), 3.0f, hexARGBTo01Color(0xFFFFEB58), WORLD_RENDER);
                         playingParentNote->e->shading = shadeColorForBlock;
-                        setLerpInfoV4_s(&playingParentNote->shadingLerp, COLOR_WHITE, nextSoundPer, &playingParentNote->e->shading);
+                        setLerpInfoV4_s(&playingParentNote->shadingLerp, COLOR_WHITE, chordToPlay->duration, &playingParentNote->e->shading);
                         parentNote->showChildren = true;
                     } else {
                         //This is for the enter hovering over the note parents. 
@@ -1297,7 +1337,9 @@ int main(int argc, char *args[]) {
                         posAt.z += 0.01;
                         static GLBufferHandles signalParentNote = {};
                         RenderInfo renderInfo = calculateRenderInfo(posAt, v3(0.5f, 0.5f, 0), gameState->camera->pos, metresToPixels);
+                        setFrameBufferId(&globalRenderGroup, GUIFrameBuffer.bufferId);
                         openGlTextureCentreDim(&signalParentNote, getTextureAsset(enterKeyTex)->id, renderInfo.pos, renderInfo.dim.xy, COLOR_WHITE, 0, mat4(), 1, renderInfo.pvm, projectionMatrixToScreen(bufferWidth, bufferHeight));
+                        setFrameBufferId(&globalRenderGroup, compositedBufferMultiSampled.bufferId);
                     }
                 } else {
                     theta = 0;
@@ -1310,16 +1352,17 @@ int main(int argc, char *args[]) {
                 updateLerpV4(&playingParentNote->shadingLerp, dt, SMOOTH_STEP_01);    
                 TimerReturnInfo info = updateTimer(&playingParentNote->soundTimer, dt);
                 if(info.finished) {
-                    if(playingParentNote->soundAt >= playingParentNote->noteValueCount) {
-                        assert(playingParentNote->soundAt <= playingParentNote->noteValueCount);
+                    if(playingParentNote->soundAt >= playingParentNote->chordCount) {
+                        assert(playingParentNote->soundAt <= playingParentNote->chordCount);
                         playingParentNote->lookedAt = true;
                         playingParentNote = 0; //finished playing the sounds. 
                         setChannelVolume(AUDIO_BACKGROUND, MAX_VOLUME, 0.5f);
-                    } else if(playingParentNote->soundAt < playingParentNote->noteValueCount) { //won't be the case if if there is only one note in the array
+                    } else if(playingParentNote->soundAt < playingParentNote->chordCount) { //won't be the case if if there is only one note in the array
                         playingParentNote->e->shading = shadeColorForBlock;
-                        setLerpInfoV4_s(&playingParentNote->shadingLerp, COLOR_WHITE, nextSoundPer, &playingParentNote->e->shading);
 
-                        ChordInfo *chordInfo = playingParentNote->sequence + playingParentNote->soundAt++;
+                        ChordInfo *chordInfo = playingParentNote->chords + playingParentNote->soundAt++;
+                        setLerpInfoV4_s(&playingParentNote->shadingLerp, COLOR_WHITE, chordInfo->duration, &playingParentNote->e->shading);
+                        
                         playChord(&arena, chordInfo);
                         pushRenderCircle(&gameState->renderCircles, playingParentNote->e->pos, v3(0.0f, 0.0f, 0.0f), v3_scale(3.0f, v3(2.0f, 2.0f, 2.0f)), 3.0f, hexARGBTo01Color(0xFFFFEB58), WORLD_RENDER);
                         // Reactivate(playingParentNote->e->particleSystem);
@@ -1541,8 +1584,21 @@ int main(int argc, char *args[]) {
                         //////
                     }
                     V3 extraForce = {};
+                    
                     if(isFlagSet(ent, ENTITY_PLAYER)) {
                         extraForce = inputAccel; 
+
+                        CastRayInfo pushBlockRayInfo = {};
+                        pushBlockRayInfo = castRayAgainstWorld(gameState, ent, v2_scale(0.1f, v2(-1, 0.1)));
+                        
+                        if(!pushBlockRayInfo.hitEnt) {
+                            pushBlockRayInfo = castRayAgainstWorld(gameState, ent, v2_scale(0.1f, v2(1, 0.1f)));
+                            
+                        } 
+
+                        if(pushBlockRayInfo.hitEnt && pushBlockRayInfo.hitEnt->entType == ENTITY_TYPE_ENTITY && isDown(gameButtons, BUTTON_SHIFT)) {
+                            pushBlockRayInfo.hitEnt->frameDDP.x = 10 * (ent->ddP.x +  extraForce.x);
+                        }
                     }
 
                     //Do multiple physics loop
@@ -1557,7 +1613,7 @@ int main(int argc, char *args[]) {
                         if(loopIndex > 0) {
                             extraForce.y = 0; //get rid of the jump
                         }
-                        V3 thisForce = v3_plus(extraForce, v3_scale(ent->inverseWeight, force)); 
+                        V3 thisForce = v3_plus(v3_plus(extraForce, ent->frameDDP), v3_scale(ent->inverseWeight, force)); 
                     
                         if(isFlagSet(ent, ENTITY_ACTIVE)) {
                             ent->pos = v3_plus(ent->pos, v3_plus(v3_scale(sqr(dtValue), thisForce),  v3_scale(dtValue, ent->dP)));
@@ -1682,6 +1738,8 @@ int main(int argc, char *args[]) {
                                 // testEnt->pos = testPos;//v3_plus(v3(testPos.x*testEntZValue, testPos.y*testEntZValue, relPosTest.z), gameState->camera.pos);
                             }
                         }
+
+                        ent->frameDDP = v3(0, 0, 0);
                     }
                     //////////////////////
 
@@ -1746,7 +1804,7 @@ int main(int argc, char *args[]) {
                         edTexId = getTextureAsset(starTex)->id;
                         drawHelpIcon = true;
                     } else if(ent->entType == ENTITY_TYPE_LIGHT) {
-                        edTexId = getTextureAsset(starTex)->id;
+                        edTexId = getTextureAsset(lightBulbTex)->id;
                         drawHelpIcon = true;
                     }
 
@@ -1831,7 +1889,7 @@ int main(int argc, char *args[]) {
             float yAtMin = 0.2f*bufferHeight;
             float yAtMax = 0.4f*bufferHeight;
             float widthPerNote = 0.1f*bufferWidth;
-            float xAt = 0.5f*(bufferWidth - (widthPerNote*(parent->noteValueCount + 1)));
+            float xAt = 0.5f*(bufferWidth - (widthPerNote*(parent->chordCount + 1)));
 
             if(parent->type == NOTE_PARENT_TIME) {
                 static GLBufferHandles cursorBufferHandles = {};
@@ -1840,10 +1898,10 @@ int main(int argc, char *args[]) {
                 openGlDrawRectCenterDim(&cursorBufferHandles, v3(cursorX, lerp(yAtMin, 0.5f, yAtMax), -1.0f), v2(10, (yAtMax - yAtMin)), COLOR_WHITE, 0, mat4TopLeftToBottomLeft(bufferHeight), 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1));                
             }
 
-            for(int noteIndex = 0; noteIndex < parent->noteValueCount; ++noteIndex) {
+            for(int noteIndex = 0; noteIndex < parent->chordCount; ++noteIndex) {
                 assert(noteIndex < MAX_NOTE_SEQUENCE_SIZE);
                 //TODO: take account of minor notes. 
-                ChordInfo *thisChord = parent->sequence + noteIndex;
+                ChordInfo *thisChord = parent->chords + noteIndex;
                 xAt += widthPerNote;//only move after each chord
                 for(int noteAt = 0; noteAt < thisChord->count; noteAt++) {
                     float value = (float)getNoteValue(thisChord, noteAt) / (float)NOTE_COUNT;
@@ -1885,6 +1943,7 @@ int main(int argc, char *args[]) {
         //  
 
         /////Render Circle array
+        setFrameBufferId(&globalRenderGroup, GUIFrameBuffer.bufferId);
         for(int entIndex = 0; entIndex < gameState->renderCircles.count; entIndex++) {
             RenderCircle *ent = (RenderCircle *)getElement(&gameState->renderCircles, entIndex);
             if(ent) {
@@ -1906,6 +1965,7 @@ int main(int argc, char *args[]) {
                                     
             }
         }
+        setFrameBufferId(&globalRenderGroup, compositedBufferMultiSampled.bufferId);
         
     
 #if DEVELOPER_MODE
@@ -1949,7 +2009,7 @@ int main(int argc, char *args[]) {
                                 case ENTITY_TYPE_ENTITY: {
                                     Entity *newEnt = (Entity *)getEmptyElement(&gameState->entities);
                                     initEntity(&gameState->commons, newEnt, &gameState->particleSystems, initPos, crateTex, 1, gameState->ID++);
-                                    addToUndoBufferIndex(&gameState->undoBuffer, CREATE_ENTITY, newEnt->e);
+                                    addToUndoBuffer(&gameState->undoBuffer, CREATE_ENTITY, newEnt->e);
                                 } break;
                                 case ENTITY_TYPE_PARTICLE_SYSTEM: {
                                     Entity_Commons *newEnt = (Entity_Commons *)getEmptyElement(&gameState->commons);
@@ -1962,35 +2022,35 @@ int main(int argc, char *args[]) {
                                     //newEnt->particleSystem->Set.BitmapCount = 0;
                                     unSetFlag(newEnt, ENTITY_GRAVITY_AFFECTED);
                                     unSetFlag(newEnt, ENTITY_COLLIDES);
-                                    addToUndoBufferIndex(&gameState->undoBuffer, CREATE_ENTITY, newEnt);
+                                    addToUndoBuffer(&gameState->undoBuffer, CREATE_ENTITY, newEnt);
                                 } break;
                                 case ENTITY_TYPE_LIGHT: {
                                     Light *newEnt = (Light *)getEmptyElement(&gameState->lights);
                                     float flux = 10;
                                     initLight(&gameState->commons, newEnt, &gameState->particleSystems, initPos, flux, gameState->ID++);
-                                    addToUndoBufferIndex(&gameState->undoBuffer, CREATE_ENTITY, newEnt->e);
+                                    addToUndoBuffer(&gameState->undoBuffer, CREATE_ENTITY, newEnt->e);
                                 } break;
                                 case ENTITY_TYPE_COLLISION: {
                                     Collision_Object *newEnt = (Collision_Object *)getEmptyElement(&gameState->collisionEnts);
                                     initCollisionEnt(&gameState->commons, newEnt, &gameState->particleSystems, initPos, scrollTex, initWeight, gameState->ID++);
-                                    addToUndoBufferIndex(&gameState->undoBuffer, CREATE_ENTITY, newEnt->e);
+                                    addToUndoBuffer(&gameState->undoBuffer, CREATE_ENTITY, newEnt->e);
                                 } break;
                                 case ENTITY_TYPE_DOOR: {
                                     Door *newEnt = (Door *)getEmptyElement(&gameState->doorEnts);
                                     initDoorEnt(&gameState->commons, newEnt, &gameState->particleSystems, initPos, doorTex, gameState->ID++);
-                                    addToUndoBufferIndex(&gameState->undoBuffer, CREATE_ENTITY, newEnt->e);
+                                    addToUndoBuffer(&gameState->undoBuffer, CREATE_ENTITY, newEnt->e);
 
                                     Door *newEnt2 = (Door *)getEmptyElement(&gameState->doorEnts);
                                     initDoorEnt(&gameState->commons, newEnt2, &gameState->particleSystems, initPos, doorTex, gameState->ID++);
                                     newEnt2->e->pos = v3_plus(initPos, v3(1, 1, 0));
-                                    addToUndoBufferIndex(&gameState->undoBuffer, CREATE_ENTITY, newEnt2->e);
+                                    addToUndoBuffer(&gameState->undoBuffer, CREATE_ENTITY, newEnt2->e);
                                     newEnt2->partner = newEnt;
                                     newEnt->partner = newEnt2;
                                 } break;
                                 case ENTITY_TYPE_PLATFORM: {
                                     Entity *newEnt = (Entity *)getEmptyElement(&gameState->platformEnts);
                                     initPlatformEnt(&gameState->commons, newEnt, &gameState->particleSystems, initPos, blockTex, gameState->ID++, platformType);
-                                    addToUndoBufferIndex(&gameState->undoBuffer, CREATE_ENTITY, newEnt->e);
+                                    addToUndoBuffer(&gameState->undoBuffer, CREATE_ENTITY, newEnt->e);
                                 } break;
                                 // case ENTITY_TYPE_NOTE: {
                                 //     Note *newEnt = (Note *)getEmptyElement(&gameState->noteEnts);
@@ -2020,7 +2080,7 @@ int main(int argc, char *args[]) {
                                                 NoteValue noteType = (NoteValue)value;
                                                 Asset *noteSound = notes[noteType];
 
-                                                int foo = newEnt->noteValueCount + 1;
+                                                int foo = newEnt->chordCount + 1;
                                                 int across = 4;
                                                 int x = foo % across;
                                                 int y = foo / across;
@@ -2035,8 +2095,8 @@ int main(int argc, char *args[]) {
                                                 newNoteEnt->value = noteType;
                                                 newNoteEnt->e->shading = noteShades[noteType];
 
-                                                addToUndoBufferIndex(&gameState->undoBuffer, CREATE_ENTITY, newNoteEnt->e);
-                                                ChordInfo *chordInfo = newEnt->sequence + newEnt->noteValueCount++;
+                                                addToUndoBuffer(&gameState->undoBuffer, CREATE_ENTITY, newNoteEnt->e);
+                                                ChordInfo *chordInfo = newEnt->chords + newEnt->chordCount++;
                                                 int indexAt = chordInfo->count++;
                                                 chordInfo->notes_[indexAt] = newNoteEnt;
                                                 
@@ -2052,7 +2112,7 @@ int main(int argc, char *args[]) {
                                             newEnt->eventToTrigger = selectedEvent;//addV3PanEventWithOffset(&gameState->events, SMOOTH_STEP_01, EVENT_NULL_FLAG, v3(0.5f, 2, 0), 3, &evComInfo, gameState->eventID++);
                                         }
 
-                                        addToUndoBufferIndex(&gameState->undoBuffer, CREATE_ENTITY, newEnt->e);
+                                        addToUndoBuffer(&gameState->undoBuffer, CREATE_ENTITY, newEnt->e);
                                     } else {
                                         //TODO: Have the fade writing come up
                                         printf("%s\n", "couldn't create note parent");
@@ -2062,7 +2122,7 @@ int main(int argc, char *args[]) {
                                 case ENTITY_TYPE_SCENARIO: {
                                     Entity *newEnt = (Entity *)getEmptyElement(&gameState->entities);
                                     initScenarioEnt(&gameState->commons, newEnt, &gameState->particleSystems, initPos, currentTex, gameState->ID++);
-                                    addToUndoBufferIndex(&gameState->undoBuffer, CREATE_ENTITY, newEnt->e);
+                                    addToUndoBuffer(&gameState->undoBuffer, CREATE_ENTITY, newEnt->e);
                                 } break;
                                 case ENTITY_TYPE_NPC: {
                                     NPC *newEnt = (NPC *)getEmptyElement(&gameState->npcEntities);
@@ -2081,16 +2141,17 @@ int main(int argc, char *args[]) {
                                     newEnt->e->renderPosOffset.y = 0.3f;
                                     newEnt->e->animationParent = findAsset((char *)"chubby man animation");
                                     AddAnimationToList(gameState, &gameState->longTermArena, newEnt->e, FindAnimationWithState(gameState->ManAnimations.anim, gameState->ManAnimations.count, ANIM_IDLE));
-                                    addToUndoBufferIndex(&gameState->undoBuffer, CREATE_ENTITY, newEnt->e);
+                                    addToUndoBuffer(&gameState->undoBuffer, CREATE_ENTITY, newEnt->e);
                                 } break;
                                 default: {
                                     printf("case not handled\n");                            
                                 }
                             }
+                        } else {
+                            interacting.e = gameState->camera;
+                            interacting.type = GRAB_CAMERA;
+                            beginUndoMove(&gameState->undoBuffer, interacting.e, interacting.e->pos);
                         }
-                        interacting.e = gameState->camera;
-                        interacting.type = GRAB_CAMERA;
-                        beginUndoMove(&gameState->undoBuffer, interacting.e, interacting.e->pos);
                     }
                 } 
             } 
@@ -2289,7 +2350,7 @@ int main(int argc, char *args[]) {
                 
                 if (ImGui::Button("Delete Entity")) { 
                     unSetFlag(interacting.e, ENTITY_VALID);
-                    addToUndoBufferIndex(&gameState->undoBuffer, DELETE_ENTITY, interacting.e);
+                    addToUndoBuffer(&gameState->undoBuffer, DELETE_ENTITY, interacting.e);
 
                     interacting.e = 0; // no longer interacting.
                 }
@@ -2314,7 +2375,7 @@ int main(int argc, char *args[]) {
                     //cant block copy because some ptrs and not all 'static' // could prefiix 
                     newCommons->dim = interEnt->dim;
                     newCommons->renderScale = interEnt->renderScale;
-                    addToUndoBufferIndex(&gameState->undoBuffer, CREATE_ENTITY, newCommons);
+                    addToUndoBuffer(&gameState->undoBuffer, CREATE_ENTITY, newCommons);
                 }
                 ImGui::End();
             }
@@ -2608,33 +2669,12 @@ int main(int argc, char *args[]) {
                 currentTex = asset;
 
                 //TODO: Maybe there could be a arena you just create, push things on then clear at the end?? instead of the concats with free _each_ string
-
-                if (ImGui::Button("Undo")) { 
-                    printf("Buffer count: %d\n", gameState->undoBuffer.count);
-                    if(gameState->undoBuffer.indexAt > 0) {
-                        gameState->undoBuffer.indexAt--;
-                        UndoInfo *info = (UndoInfo *)getElement(&gameState->undoBuffer, gameState->undoBuffer.indexAt);
-                        assert(info);
-                        processUndoRedoElm(gameState, info, UNDO);
-                    } else {
-                        printf("Nothing to undo in the buffer\n");
-                    }
+                if (ImGui::Button("Undo") || (isDown(gameButtons, BUTTON_COMMAND) && wasPressed(gameButtons, BUTTON_Z) && !(isDown(gameButtons, BUTTON_SHIFT)))) { 
+                    undoForUndoState(&gameState->undoBuffer);
                 }
                 
-                if (ImGui::Button("Redo")) { 
-                    printf("Buffer count: %d\n", gameState->undoBuffer.count);
-                    assert(gameState->undoBuffer.indexAt <= gameState->undoBuffer.count);
-                    if(gameState->undoBuffer.indexAt < gameState->undoBuffer.count) {
-                        UndoInfo *info = (UndoInfo *)getElement(&gameState->undoBuffer, gameState->undoBuffer.indexAt);
-                        assert(info);
-                        processUndoRedoElm(gameState, info, REDO);
-
-                        gameState->undoBuffer.indexAt++;
-                    } else {
-                        printf("Buffer count: %d\n", gameState->undoBuffer.count);
-                        printf("Buffer at: %d\n", gameState->undoBuffer.indexAt);
-                        printf("Nothing to redo in the buffer\n");
-                    }
+                if (ImGui::Button("Redo") || (isDown(gameButtons, BUTTON_COMMAND) && wasPressed(gameButtons, BUTTON_Z) && isDown(gameButtons, BUTTON_SHIFT))) { 
+                    redoForUndoState(&gameState->undoBuffer);
                 }
                 
                 ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
@@ -2663,15 +2703,29 @@ int main(int argc, char *args[]) {
 #if DYNAMIC_SHADOWS
                 V4 colors[4] = {COLOR_WHITE, COLOR_WHITE, COLOR_WHITE, COLOR_WHITE};
                 static GLBufferHandles shadowHandle = {};
+                static GLBufferHandles GUIFrameHandle = {};
 
                 setFrameBufferId(&globalRenderGroup, shadowFrameBuffer.bufferId);
                 V2 halfScreenSize = v2_scale(0.5f, resolution);
-                openGlDrawRectCenterDim_(&shadowHandle, v3(halfScreenSize.x, halfScreenSize.y, -1), v2(bufferWidth, bufferHeight), colors, 0, mat4(), CompositedSceneBuffer.textureId, SHAPE_SHADOW, shadowProgram.glProgram, 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1), mat4());
+                GLuint thisProgram = shadowProgram.glProgram;
+                ShapeType thisShape = SHAPE_SHADOW;
+                // static bool on = false;
+                // if(wasPressed(gameButtons, BUTTON_LEFT_MOUSE)) {
+                //     on = !on;
+                // }
+                // if(on) {
+                //     thisProgram = textureProgram.glProgram;
+                //     thisShape = SHAPE_TEXTURE;
+                // }
+                openGlDrawRectCenterDim_(&shadowHandle, v3(halfScreenSize.x, halfScreenSize.y, -1), v2(bufferWidth, bufferHeight), colors, 0, mat4(), CompositedSceneBuffer.textureId, thisShape, thisProgram, 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1), mat4());
+                openGlDrawRectCenterDim_(&GUIFrameHandle, v3(halfScreenSize.x, halfScreenSize.y, -1), v2(bufferWidth, bufferHeight), colors, 0, mat4(), GUIFrameBuffer.textureId, SHAPE_TEXTURE, textureProgram.glProgram, 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1), mat4());
                 drawRenderGroup(&globalRenderGroup);
 
                 setFrameBufferId(&globalRenderGroup, finalCompositedBuffer.bufferId);
                 static GLBufferHandles blitHandle = {};
-                openGlDrawRectCenterDim_(&blitHandle, v3(halfScreenSize.x, halfScreenSize.y, -1), v2(bufferWidth, bufferHeight), colors, 0, mat4(), shadowFrameBuffer.textureId, SHAPE_TEXTURE, textureProgram.glProgram, 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1), mat4());
+                GLuint textureId = shadowFrameBuffer.textureId;
+
+                openGlDrawRectCenterDim_(&blitHandle, v3(halfScreenSize.x, halfScreenSize.y, -1), v2(bufferWidth, bufferHeight), colors, 0, mat4(), textureId, SHAPE_TEXTURE, textureProgram.glProgram, 1, OrthoMatrixToScreen(bufferWidth, bufferHeight, 1), mat4());
                 drawRenderGroup(&globalRenderGroup);
 
 #endif
